@@ -24,20 +24,9 @@ cd a11y-scan/
 node install.mjs install --target /path/to/your/project
 ```
 
-## Uninstall
-
-
-This reads the `skill.lock` file and removes all installed files cleanly.
-
 ## Installed Files
 
 ### Runtime (all agents)
-
-| Path | Description |
-|------|-------------|
-| `.skills/a11y-scan/scripts/a11y-scan.mjs` | Scanner script (Playwright + axe-core) |
-| `.skills/a11y-scan/prompts/*.md` | Agent-agnostic prompt templates |
-| `.skills/a11y-scan/skill.lock` | Install manifest for clean uninstall |
 
 ### GitHub Copilot
 

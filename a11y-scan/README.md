@@ -4,12 +4,6 @@
 
 Run WCAG 2.1 accessibility scans on any URL directly from chat. Uses Playwright and axe-core to perform automated accessibility testing and produces a self-contained HTML report with scores, violations, and code snippets. Works with GitHub Copilot or any coding agent.
 
-## Quick Start
-
-```bash
-npx @anthropic/a11y-scan install
-```
-
 The installer auto-detects which coding agents you use and configures each one.
 
 ## Supported Agents

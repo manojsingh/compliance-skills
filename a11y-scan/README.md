@@ -11,7 +11,6 @@ The installer auto-detects which coding agents you use and configures each one.
 | Agent | Detection Signal | What Gets Installed |
 |-------|-----------------|-------------------|
 | **GitHub Copilot** | `.github/` or `.github/copilot-instructions.md` | SKILL.md + prompt files |
-| **Generic** | (fallback) | Instructions in `.skills/` |
 
 Multiple agents can be active simultaneously — the installer configures all detected agents.
 

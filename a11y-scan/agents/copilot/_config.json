@@ -1,0 +1,12 @@
+{
+  "templates": {
+    "SKILL.md": {
+      "output": ".github/skills/{{name}}/SKILL.md",
+      "per_prompt": false
+    },
+    "prompt.md": {
+      "output": ".github/prompts/a11y-{{prompt.id}}.prompt.md",
+      "per_prompt": true
+    }
+  }
+}

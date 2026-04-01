@@ -1,0 +1,8 @@
+{
+  "templates": {
+    "SKILLS.md": {
+      "output": ".skills/{{name}}/INSTRUCTIONS.md",
+      "per_prompt": false
+    }
+  }
+}

@@ -1,0 +1,45 @@
+# ── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+compliance-portal/node_modules/
+compliance-portal/client/node_modules/
+compliance-portal/server/node_modules/
+compliance-portal/shared/node_modules/
+
+# ── Build output ─────────────────────────────────────────────────────────────
+compliance-portal/client/dist/
+compliance-portal/server/dist/
+compliance-portal/shared/dist/
+
+# ── TypeScript build info ────────────────────────────────────────────────────
+*.tsbuildinfo
+compliance-portal/client/tsconfig.tsbuildinfo
+
+# ── SQLite database files (runtime data, not source) ─────────────────────────
+compliance-portal/data/*.db-shm
+compliance-portal/data/*.db-wal
+
+# ── Environment / secrets ────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+compliance-portal/**/.env
+compliance-portal/**/.env.local
+
+# ── OS / editor noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Playwright / test artifacts ───────────────────────────────────────────────
+compliance-portal/server/playwright-report/
+compliance-portal/server/test-results/

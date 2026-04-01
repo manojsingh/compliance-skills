@@ -1,0 +1,26 @@
+{
+  "name": "@anthropic/a11y-scan",
+  "version": "1.0.0",
+  "description": "WCAG accessibility scanner — universal skill package for coding agents",
+  "type": "module",
+  "bin": {
+    "a11y-scan-skill": "./install.mjs"
+  },
+  "files": [
+    "skill.yaml",
+    "install.mjs",
+    "scripts/",
+    "prompts/",
+    "agents/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "accessibility",
+    "wcag",
+    "a11y",
+    "copilot-skill",
+    "claude-skill"
+  ],
+  "license": "MIT"
+}

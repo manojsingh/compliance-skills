@@ -1,0 +1,124 @@
+# skill.yaml — Universal Skill Manifest v1
+
+schema: "1"
+
+# === Metadata ===
+name: a11y-scan
+display_name: "WCAG Accessibility Scanner"
+description: >
+  Run WCAG 2.1 accessibility scans on any URL directly from chat.
+  Uses Playwright and axe-core to perform automated accessibility testing.
+  Produces a self-contained HTML report with scores, violations, and code snippets.
+version: 1.0.0
+license: MIT
+author: compliance-skills
+repository: https://github.com/anthropics/compliance-skills
+keywords:
+  - accessibility
+  - wcag
+  - a11y
+  - audit
+  - compliance
+
+# === Triggers ===
+triggers:
+  - "check accessibility"
+  - "run a11y scan"
+  - "WCAG compliance"
+  - "accessibility audit"
+  - "scan for a11y issues"
+
+# === Runtime ===
+runtime:
+  engine: node
+  min_version: "18"
+  entry: scripts/a11y-scan.mjs
+  auto_deps: true
+
+# === Parameters ===
+parameters:
+  - name: url
+    type: string
+    required: false
+    description: "Target URL to scan"
+  - name: file
+    type: string
+    required: false
+    flag: "--file"
+    description: "Path to text file containing URLs (one per line)"
+  - name: level
+    type: enum
+    values:
+      - A
+      - AA
+      - AAA
+    default: AA
+    flag: "--level"
+    description: "WCAG compliance level"
+  - name: depth
+    type: integer
+    min: 1
+    max: 5
+    default: 1
+    flag: "--depth"
+    description: "Crawl depth (1 = single page)"
+  - name: output
+    type: string
+    flag: "--output"
+    description: "Output path for the HTML report"
+
+# === Prompts ===
+prompts:
+  - id: quick-scan
+    file: prompts/quick-scan.md
+    description: "Quick accessibility scan of a URL for WCAG AA compliance"
+    variables:
+      - url
+  - id: deep-audit
+    file: prompts/deep-audit.md
+    description: "Deep WCAG AAA accessibility audit with full crawl"
+    variables:
+      - url
+  - id: scan-localhost
+    file: prompts/scan-localhost.md
+    description: "Scan your local dev server for accessibility issues"
+    variables:
+      - port
+  - id: batch-scan
+    file: prompts/batch-scan.md
+    description: "Scan multiple sites from a URL list file"
+    variables:
+      - file
+  - id: compare-before-after
+    file: prompts/compare-before-after.md
+    description: "Compare accessibility scores between two URLs"
+    variables:
+      - url1
+      - url2
+
+# === Output Contract ===
+output:
+  format: json
+  markers:
+    - "__A11Y_RESULT__"
+  schema:
+    url: string
+    level: string
+    score: integer
+    pass: boolean
+    pages: integer
+    totalIssues: integer
+    critical: integer
+    serious: integer
+    reportPath: string
+  exit_codes:
+    0: "PASS — score >= 80"
+    1: "FAIL — score < 80"
+    2: "Error — script failed"
+
+# === Agent Overrides (optional) ===
+agents:
+  copilot:
+    skill_dir: ".github/skills/{name}"
+    prompt_dir: ".github/prompts"
+    prompt_prefix: "a11y"

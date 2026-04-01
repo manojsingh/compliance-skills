@@ -289,16 +289,36 @@ export function updateCampaign(id: string, data: UpdateCampaignInput): Campaign 
 }
 
 const deleteCampaignStmt = db.prepare(`DELETE FROM campaigns WHERE id = ?`);
+const deleteScanIssuesByResultStmt = db.prepare(`DELETE FROM scan_issues WHERE result_id IN (SELECT id FROM scan_results WHERE scan_id IN (SELECT id FROM scans WHERE campaign_id = ?))`);
+const deleteScanAuditLogByCampaignStmt = db.prepare(`DELETE FROM scan_audit_log WHERE scan_id IN (SELECT id FROM scans WHERE campaign_id = ?)`);
+const deleteScanResultsByCampaignStmt = db.prepare(`DELETE FROM scan_results WHERE scan_id IN (SELECT id FROM scans WHERE campaign_id = ?)`);
+const deleteScansByCampaignStmt = db.prepare(`DELETE FROM scans WHERE campaign_id = ?`);
+const deleteCampaignSitesStmt = db.prepare(`DELETE FROM campaign_sites WHERE campaign_id = ?`);
 
 export function deleteCampaign(id: string): boolean {
-  const result = deleteCampaignStmt.run(id);
-  return result.changes > 0;
+  const deleteOne = db.transaction((campaignId: string) => {
+    // Delete in order: issues -> audit logs -> results -> scans -> sites -> campaign
+    deleteScanIssuesByResultStmt.run(campaignId);
+    deleteScanAuditLogByCampaignStmt.run(campaignId);
+    deleteScanResultsByCampaignStmt.run(campaignId);
+    deleteScansByCampaignStmt.run(campaignId);
+    deleteCampaignSitesStmt.run(campaignId);
+    const result = deleteCampaignStmt.run(campaignId);
+    return result.changes > 0;
+  });
+  return deleteOne(id);
 }
 
 export function deleteCampaigns(ids: string[]): number {
   const deleteMany = db.transaction((campaignIds: string[]) => {
     let totalDeleted = 0;
     for (const id of campaignIds) {
+      // Delete in order: issues -> audit logs -> results -> scans -> sites -> campaign
+      deleteScanIssuesByResultStmt.run(id);
+      deleteScanAuditLogByCampaignStmt.run(id);
+      deleteScanResultsByCampaignStmt.run(id);
+      deleteScansByCampaignStmt.run(id);
+      deleteCampaignSitesStmt.run(id);
       const result = deleteCampaignStmt.run(id);
       totalDeleted += result.changes;
     }

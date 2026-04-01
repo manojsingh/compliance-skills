@@ -109,9 +109,26 @@ POST /api/reports/generate  →  PDFKit PDF  →  data/reports/
 |---|---|---|
 | Node.js | 20 LTS or later | [nodejs.org](https://nodejs.org) |
 | npm | 10+ | Ships with Node 20 |
-| Chromium / Chrome | Latest | Installed automatically by Playwright |
+| Chromium / Chrome | Latest | Installed via Playwright (see setup below) |
 | Disk space | ~500 MB | Node modules + Playwright browser binaries |
 | OS | macOS, Linux, Windows WSL2 | Native Windows untested |
+
+### System Dependencies
+
+For Linux systems, you'll need to install system dependencies required by Playwright browsers:
+
+```bash
+# From the project root, navigate to server directory
+cd server
+
+# Install Playwright browsers (Chromium, Firefox, WebKit)
+npx playwright install
+
+# Install system dependencies (Linux only - requires sudo)
+npx playwright install-deps
+```
+
+**Note for macOS/Windows users**: The `install-deps` command is only needed on Linux. On macOS and Windows, the browsers work without additional system libraries.
 
 ---
 
@@ -159,14 +176,17 @@ cd compliance-portal
 npm install
 ```
 
-### 2. Install Playwright browsers
+### 2. Install Playwright browsers and dependencies
 
-Playwright downloads Chromium automatically during `npm install` via a `postinstall` script. If it didn't run, install manually:
+Playwright needs to download browser binaries and system dependencies:
 
 ```bash
 cd server
-npx playwright install chromium
+npx playwright install
+npx playwright install-deps  # Linux only - requires sudo
 ```
+
+**Important**: On Linux systems, the `install-deps` command requires sudo privileges to install system libraries. If you skip this step, you may encounter errors when running scans.
 
 ### 3. Environment variables (optional)
 

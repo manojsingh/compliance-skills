@@ -23,20 +23,6 @@ Multiple agents can be active simultaneously — the installer configures all de
 
 ## Install Options
 
-```bash
-# Auto-detect agents in current directory
-npx @anthropic/a11y-scan install
-
-# Install for a specific agent
-npx @anthropic/a11y-scan install --agent copilot
-
-# Install for all agents
-npx @anthropic/a11y-scan install --agent all
-
-# Install into a different project
-npx @anthropic/a11y-scan install --target /path/to/project
-```
-
 ### Manual Install (from zip or clone)
 
 ```bash
@@ -47,9 +33,6 @@ node install.mjs install --target /path/to/your/project
 
 ## Uninstall
 
-```bash
-npx @anthropic/a11y-scan uninstall
-```
 
 This reads the `skill.lock` file and removes all installed files cleanly.
 

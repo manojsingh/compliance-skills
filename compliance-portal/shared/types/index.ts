@@ -4,6 +4,7 @@ export interface Campaign {
   complianceLevel: 'A' | 'AA' | 'AAA';
   categories: AuditCategory[];
   scanDepth: number;
+  maxPagesToScan: number | null;
   scheduleCron: string | null;
   status: 'active' | 'paused' | 'completed';
   createdAt: string;

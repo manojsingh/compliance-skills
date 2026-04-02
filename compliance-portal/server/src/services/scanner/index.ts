@@ -43,6 +43,7 @@ export interface ScanConfig {
   complianceLevel: ComplianceLevel;
   categories: AuditCategory[];
   scanDepth: number;
+  maxPagesToScan: number | null;
 }
 
 const PAGE_TIMEOUT = 30_000;
@@ -124,10 +125,10 @@ export async function executeScan(config: ScanConfig): Promise<void> {
             'Mozilla/5.0 (compatible; CompliancePortalScanner/1.0; +https://compliance-portal.dev)',
         });
         // Crawl using a dedicated page (BFS must be sequential)
-        console.log(`[Scanner] Crawling site: ${site.url} (depth=${config.scanDepth})`);
+        console.log(`[Scanner] Crawling site: ${site.url} (depth=${config.scanDepth}, maxPages=${config.maxPagesToScan ?? 'unlimited'})`);
         const crawlPage = await context.newPage();
         crawlPage.setDefaultTimeout(PAGE_TIMEOUT);
-        const pages = await crawlSite(crawlPage, site.url, config.scanDepth);
+        const pages = await crawlSite(crawlPage, site.url, config.scanDepth, config.maxPagesToScan);
         await crawlPage.close();
         result.pages = pages.length;
         console.log(`[Scanner] Crawled ${pages.length} page(s) for ${site.url}`);

@@ -19,6 +19,8 @@ export interface ValidatedCampaignBody {
   categories: AuditCategory[];
   scanDepth: number;
   maxPagesToScan: number | null;
+  siteConcurrency: number;
+  pageConcurrency: number;
   scheduleCron: string | null;
   sites: { url: string; label: string }[];
 }
@@ -68,6 +70,18 @@ export function validateCampaignCreate(body: unknown): ValidatedCampaignBody {
     }
   }
 
+  // siteConcurrency
+  const siteConcurrency = b.siteConcurrency !== undefined ? Number(b.siteConcurrency) : 2;
+  if (!Number.isInteger(siteConcurrency) || siteConcurrency < 1 || siteConcurrency > 5) {
+    errors.push('siteConcurrency must be an integer between 1 and 5');
+  }
+
+  // pageConcurrency
+  const pageConcurrency = b.pageConcurrency !== undefined ? Number(b.pageConcurrency) : 3;
+  if (!Number.isInteger(pageConcurrency) || pageConcurrency < 1 || pageConcurrency > 10) {
+    errors.push('pageConcurrency must be an integer between 1 and 10');
+  }
+
   // scheduleCron
   const scheduleCron = b.scheduleCron !== undefined ? (b.scheduleCron as string | null) : null;
 
@@ -93,6 +107,8 @@ export function validateCampaignCreate(body: unknown): ValidatedCampaignBody {
     categories: b.categories as AuditCategory[],
     scanDepth,
     maxPagesToScan,
+    siteConcurrency,
+    pageConcurrency,
     scheduleCron,
     sites: (b.sites as { url: string; label?: string }[]).map((s) => ({
       url: s.url,
@@ -158,6 +174,24 @@ export function validateCampaignUpdate(body: unknown): Record<string, unknown> {
       } else {
         result.maxPagesToScan = mpts;
       }
+    }
+  }
+
+  if (b.siteConcurrency !== undefined) {
+    const sc = Number(b.siteConcurrency);
+    if (!Number.isInteger(sc) || sc < 1 || sc > 5) {
+      errors.push('siteConcurrency must be an integer between 1 and 5');
+    } else {
+      result.siteConcurrency = sc;
+    }
+  }
+
+  if (b.pageConcurrency !== undefined) {
+    const pc = Number(b.pageConcurrency);
+    if (!Number.isInteger(pc) || pc < 1 || pc > 10) {
+      errors.push('pageConcurrency must be an integer between 1 and 10');
+    } else {
+      result.pageConcurrency = pc;
     }
   }
 

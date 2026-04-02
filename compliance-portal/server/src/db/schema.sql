@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS campaigns (
   categories TEXT NOT NULL DEFAULT '[]',
   scan_depth INTEGER NOT NULL DEFAULT 2 CHECK(scan_depth BETWEEN 1 AND 5),
   max_pages_to_scan INTEGER DEFAULT NULL,
+  site_concurrency INTEGER NOT NULL DEFAULT 2 CHECK(site_concurrency BETWEEN 1 AND 5),
+  page_concurrency INTEGER NOT NULL DEFAULT 3 CHECK(page_concurrency BETWEEN 1 AND 10),
   schedule_cron TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'completed')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

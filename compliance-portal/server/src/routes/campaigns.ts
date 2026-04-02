@@ -142,6 +142,8 @@ router.post(
       categories: campaign.categories,
       scanDepth: campaign.scanDepth,
       maxPagesToScan: campaign.maxPagesToScan,
+      siteConcurrency: campaign.siteConcurrency,
+      pageConcurrency: campaign.pageConcurrency,
     }).catch((err) => {
       console.error(`Background scan ${scan.id} error:`, err);
     });

@@ -33,9 +33,6 @@ async function runWithConcurrency<T>(
   await Promise.allSettled(workers);
 }
 
-const SITE_CONCURRENCY = 2;
-const PAGE_CONCURRENCY = 3;
-
 export interface ScanConfig {
   scanId: string;
   campaignId: string;
@@ -44,6 +41,8 @@ export interface ScanConfig {
   categories: AuditCategory[];
   scanDepth: number;
   maxPagesToScan: number | null;
+  siteConcurrency: number;
+  pageConcurrency: number;
 }
 
 const PAGE_TIMEOUT = 30_000;
@@ -93,8 +92,8 @@ interface SiteResult {
 /**
  * Main scanning orchestrator.
  * Launches a headless browser, crawls pages, runs audits, and stores results.
- * Sites are processed in parallel (up to SITE_CONCURRENCY), and pages within
- * each site are audited in parallel tabs (up to PAGE_CONCURRENCY).
+ * Sites are processed in parallel (up to siteConcurrency), and pages within
+ * each site are audited in parallel tabs (up to pageConcurrency).
  * This function is designed to run in the background (fire-and-forget).
  */
 export async function executeScan(config: ScanConfig): Promise<void> {
@@ -106,7 +105,9 @@ export async function executeScan(config: ScanConfig): Promise<void> {
 
     const siteResults: SiteResult[] = [];
 
-    await runWithConcurrency(config.sites, SITE_CONCURRENCY, async (site) => {
+    console.log(`[Scanner] Starting scan with siteConcurrency=${config.siteConcurrency}, pageConcurrency=${config.pageConcurrency}`);
+
+    await runWithConcurrency(config.sites, config.siteConcurrency, async (site) => {
       const result: SiteResult = {
         pages: 0,
         issues: 0,
@@ -137,7 +138,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
         let pagesAudited = 0;
 
         // Audit discovered pages in parallel using multiple tabs
-        await runWithConcurrency(pages, PAGE_CONCURRENCY, async (pageUrl) => {
+        await runWithConcurrency(pages, config.pageConcurrency, async (pageUrl) => {
           const auditPage = await context!.newPage();
           auditPage.setDefaultTimeout(PAGE_TIMEOUT);
 

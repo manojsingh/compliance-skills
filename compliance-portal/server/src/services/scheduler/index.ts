@@ -206,6 +206,8 @@ class ScanScheduler {
           categories: campaign.categories,
           scanDepth: campaign.scanDepth,
           maxPagesToScan: campaign.maxPagesToScan,
+          siteConcurrency: campaign.siteConcurrency,
+          pageConcurrency: campaign.pageConcurrency,
         });
       }
     } catch (err) {

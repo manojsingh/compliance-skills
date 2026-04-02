@@ -21,6 +21,8 @@ interface CampaignRow {
   categories: string;
   scan_depth: number;
   max_pages_to_scan: number | null;
+  site_concurrency: number;
+  page_concurrency: number;
   schedule_cron: string | null;
   status: string;
   created_at: string;
@@ -74,6 +76,8 @@ function toCampaign(row: CampaignRow): Campaign {
     categories: JSON.parse(row.categories) as AuditCategory[],
     scanDepth: row.scan_depth,
     maxPagesToScan: row.max_pages_to_scan,
+    siteConcurrency: row.site_concurrency,
+    pageConcurrency: row.page_concurrency,
     scheduleCron: row.schedule_cron,
     status: row.status as Campaign['status'],
     createdAt: row.created_at,
@@ -137,13 +141,15 @@ export interface CreateCampaignInput {
   categories: AuditCategory[];
   scanDepth?: number;
   maxPagesToScan?: number | null;
+  siteConcurrency?: number;
+  pageConcurrency?: number;
   scheduleCron?: string | null;
   sites: { url: string; label?: string }[];
 }
 
 const insertCampaignStmt = db.prepare(`
-  INSERT INTO campaigns (id, name, compliance_level, categories, scan_depth, max_pages_to_scan, schedule_cron)
-  VALUES (@id, @name, @compliance_level, @categories, @scan_depth, @max_pages_to_scan, @schedule_cron)
+  INSERT INTO campaigns (id, name, compliance_level, categories, scan_depth, max_pages_to_scan, site_concurrency, page_concurrency, schedule_cron)
+  VALUES (@id, @name, @compliance_level, @categories, @scan_depth, @max_pages_to_scan, @site_concurrency, @page_concurrency, @schedule_cron)
 `);
 
 const insertSiteStmt = db.prepare(`
@@ -173,6 +179,8 @@ export function createCampaign(data: CreateCampaignInput): Campaign & { sites: C
       categories: JSON.stringify(data.categories),
       scan_depth: data.scanDepth ?? 2,
       max_pages_to_scan: data.maxPagesToScan ?? null,
+      site_concurrency: data.siteConcurrency ?? 2,
+      page_concurrency: data.pageConcurrency ?? 3,
       schedule_cron: data.scheduleCron ?? null,
     });
 
@@ -251,6 +259,8 @@ export interface UpdateCampaignInput {
   categories?: AuditCategory[];
   scanDepth?: number;
   maxPagesToScan?: number | null;
+  siteConcurrency?: number;
+  pageConcurrency?: number;
   scheduleCron?: string | null;
   status?: Campaign['status'];
   sites?: { url: string; label?: string }[];
@@ -265,6 +275,8 @@ export function updateCampaign(id: string, data: UpdateCampaignInput): Campaign 
   if (data.categories !== undefined) { fields.push('categories = @categories'); params.categories = JSON.stringify(data.categories); }
   if (data.scanDepth !== undefined) { fields.push('scan_depth = @scan_depth'); params.scan_depth = data.scanDepth; }
   if (data.maxPagesToScan !== undefined) { fields.push('max_pages_to_scan = @max_pages_to_scan'); params.max_pages_to_scan = data.maxPagesToScan; }
+  if (data.siteConcurrency !== undefined) { fields.push('site_concurrency = @site_concurrency'); params.site_concurrency = data.siteConcurrency; }
+  if (data.pageConcurrency !== undefined) { fields.push('page_concurrency = @page_concurrency'); params.page_concurrency = data.pageConcurrency; }
   if (data.scheduleCron !== undefined) { fields.push('schedule_cron = @schedule_cron'); params.schedule_cron = data.scheduleCron; }
   if (data.status !== undefined) { fields.push('status = @status'); params.status = data.status; }
 

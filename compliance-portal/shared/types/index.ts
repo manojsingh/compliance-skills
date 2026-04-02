@@ -5,6 +5,8 @@ export interface Campaign {
   categories: AuditCategory[];
   scanDepth: number;
   maxPagesToScan: number | null;
+  siteConcurrency: number;
+  pageConcurrency: number;
   scheduleCron: string | null;
   status: 'active' | 'paused' | 'completed';
   createdAt: string;

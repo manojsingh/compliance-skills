@@ -17,6 +17,7 @@ import { SiteInput, isValidUrl, type SiteEntry } from '@/components/campaigns/Si
 import { ComplianceLevelSelector } from '@/components/campaigns/ComplianceLevelSelector';
 import { ScanDepthSlider } from '@/components/campaigns/ScanDepthSlider';
 import { MaxPagesInput } from '@/components/campaigns/MaxPagesInput';
+import { ConcurrencySettings } from '@/components/campaigns/ConcurrencySettings';
 import { ScheduleSelector } from '@/components/campaigns/ScheduleSelector';
 import type { ComplianceLevel, Campaign, CampaignSite } from '../../../shared/types';
 import { campaignApi } from '@/lib/api';
@@ -28,6 +29,8 @@ interface FormState {
   complianceLevel: ComplianceLevel;
   scanDepth: number;
   maxPagesToScan: number | null;
+  siteConcurrency: number;
+  pageConcurrency: number;
   recurring: boolean;
   scheduleCron: string | null;
 }
@@ -53,6 +56,8 @@ export function CampaignConfigPage() {
     complianceLevel: 'AA',
     scanDepth: 2,
     maxPagesToScan: null,
+    siteConcurrency: 2,
+    pageConcurrency: 3,
     recurring: false,
     scheduleCron: null,
   });
@@ -75,6 +80,8 @@ export function CampaignConfigPage() {
           complianceLevel: c.complianceLevel,
           scanDepth: c.scanDepth,
           maxPagesToScan: c.maxPagesToScan,
+          siteConcurrency: c.siteConcurrency,
+          pageConcurrency: c.pageConcurrency,
           recurring: Boolean(c.scheduleCron),
           scheduleCron: c.scheduleCron,
         });
@@ -258,6 +265,8 @@ export function CampaignConfigPage() {
         categories: ['accessibility'] as const,
         scanDepth: form.scanDepth,
         maxPagesToScan: form.maxPagesToScan,
+        siteConcurrency: form.siteConcurrency,
+        pageConcurrency: form.pageConcurrency,
         scheduleCron: form.recurring ? form.scheduleCron : null,
         sites: validSites.map((s) => ({ url: s.url.trim(), label: s.label.trim() })),
       };
@@ -270,6 +279,8 @@ export function CampaignConfigPage() {
           categories: payload.categories,
           scanDepth: payload.scanDepth,
           maxPagesToScan: payload.maxPagesToScan,
+          siteConcurrency: payload.siteConcurrency,
+          pageConcurrency: payload.pageConcurrency,
           scheduleCron: payload.scheduleCron,
           sites: payload.sites,
         });
@@ -448,7 +459,23 @@ export function CampaignConfigPage() {
         </CardContent>
       </Card>
 
-      {/* Section 6 — Schedule */}
+      {/* Section 6 — Performance Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Performance Settings</CardTitle>
+          <CardDescription>Control scan concurrency to optimize speed and resource usage</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ConcurrencySettings
+            siteConcurrency={form.siteConcurrency}
+            pageConcurrency={form.pageConcurrency}
+            onSiteConcurrencyChange={(v) => updateField('siteConcurrency', v)}
+            onPageConcurrencyChange={(v) => updateField('pageConcurrency', v)}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Section 7 — Schedule */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Schedule</CardTitle>

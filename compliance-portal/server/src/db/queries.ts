@@ -20,6 +20,7 @@ interface CampaignRow {
   compliance_level: string;
   categories: string;
   scan_depth: number;
+  max_pages_to_scan: number | null;
   schedule_cron: string | null;
   status: string;
   created_at: string;
@@ -72,6 +73,7 @@ function toCampaign(row: CampaignRow): Campaign {
     complianceLevel: row.compliance_level as Campaign['complianceLevel'],
     categories: JSON.parse(row.categories) as AuditCategory[],
     scanDepth: row.scan_depth,
+    maxPagesToScan: row.max_pages_to_scan,
     scheduleCron: row.schedule_cron,
     status: row.status as Campaign['status'],
     createdAt: row.created_at,
@@ -134,13 +136,14 @@ export interface CreateCampaignInput {
   complianceLevel: Campaign['complianceLevel'];
   categories: AuditCategory[];
   scanDepth?: number;
+  maxPagesToScan?: number | null;
   scheduleCron?: string | null;
   sites: { url: string; label?: string }[];
 }
 
 const insertCampaignStmt = db.prepare(`
-  INSERT INTO campaigns (id, name, compliance_level, categories, scan_depth, schedule_cron)
-  VALUES (@id, @name, @compliance_level, @categories, @scan_depth, @schedule_cron)
+  INSERT INTO campaigns (id, name, compliance_level, categories, scan_depth, max_pages_to_scan, schedule_cron)
+  VALUES (@id, @name, @compliance_level, @categories, @scan_depth, @max_pages_to_scan, @schedule_cron)
 `);
 
 const insertSiteStmt = db.prepare(`
@@ -169,6 +172,7 @@ export function createCampaign(data: CreateCampaignInput): Campaign & { sites: C
       compliance_level: data.complianceLevel,
       categories: JSON.stringify(data.categories),
       scan_depth: data.scanDepth ?? 2,
+      max_pages_to_scan: data.maxPagesToScan ?? null,
       schedule_cron: data.scheduleCron ?? null,
     });
 
@@ -246,6 +250,7 @@ export interface UpdateCampaignInput {
   complianceLevel?: Campaign['complianceLevel'];
   categories?: AuditCategory[];
   scanDepth?: number;
+  maxPagesToScan?: number | null;
   scheduleCron?: string | null;
   status?: Campaign['status'];
   sites?: { url: string; label?: string }[];
@@ -259,6 +264,7 @@ export function updateCampaign(id: string, data: UpdateCampaignInput): Campaign 
   if (data.complianceLevel !== undefined) { fields.push('compliance_level = @compliance_level'); params.compliance_level = data.complianceLevel; }
   if (data.categories !== undefined) { fields.push('categories = @categories'); params.categories = JSON.stringify(data.categories); }
   if (data.scanDepth !== undefined) { fields.push('scan_depth = @scan_depth'); params.scan_depth = data.scanDepth; }
+  if (data.maxPagesToScan !== undefined) { fields.push('max_pages_to_scan = @max_pages_to_scan'); params.max_pages_to_scan = data.maxPagesToScan; }
   if (data.scheduleCron !== undefined) { fields.push('schedule_cron = @schedule_cron'); params.schedule_cron = data.scheduleCron; }
   if (data.status !== undefined) { fields.push('status = @status'); params.status = data.status; }
 

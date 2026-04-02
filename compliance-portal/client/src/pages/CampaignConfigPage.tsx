@@ -16,6 +16,7 @@ import { Plus, Save, Play, ArrowLeft, Loader2, Upload } from 'lucide-react';
 import { SiteInput, isValidUrl, type SiteEntry } from '@/components/campaigns/SiteInput';
 import { ComplianceLevelSelector } from '@/components/campaigns/ComplianceLevelSelector';
 import { ScanDepthSlider } from '@/components/campaigns/ScanDepthSlider';
+import { MaxPagesInput } from '@/components/campaigns/MaxPagesInput';
 import { ScheduleSelector } from '@/components/campaigns/ScheduleSelector';
 import type { ComplianceLevel, Campaign, CampaignSite } from '../../../shared/types';
 import { campaignApi } from '@/lib/api';
@@ -26,6 +27,7 @@ interface FormState {
   sites: SiteEntry[];
   complianceLevel: ComplianceLevel;
   scanDepth: number;
+  maxPagesToScan: number | null;
   recurring: boolean;
   scheduleCron: string | null;
 }
@@ -50,6 +52,7 @@ export function CampaignConfigPage() {
     sites: [{ url: '', label: '' }],
     complianceLevel: 'AA',
     scanDepth: 2,
+    maxPagesToScan: null,
     recurring: false,
     scheduleCron: null,
   });
@@ -71,6 +74,7 @@ export function CampaignConfigPage() {
               : [{ url: '', label: '' }],
           complianceLevel: c.complianceLevel,
           scanDepth: c.scanDepth,
+          maxPagesToScan: c.maxPagesToScan,
           recurring: Boolean(c.scheduleCron),
           scheduleCron: c.scheduleCron,
         });
@@ -253,6 +257,7 @@ export function CampaignConfigPage() {
         complianceLevel: form.complianceLevel,
         categories: ['accessibility'] as const,
         scanDepth: form.scanDepth,
+        maxPagesToScan: form.maxPagesToScan,
         scheduleCron: form.recurring ? form.scheduleCron : null,
         sites: validSites.map((s) => ({ url: s.url.trim(), label: s.label.trim() })),
       };
@@ -264,6 +269,7 @@ export function CampaignConfigPage() {
           complianceLevel: payload.complianceLevel,
           categories: payload.categories,
           scanDepth: payload.scanDepth,
+          maxPagesToScan: payload.maxPagesToScan,
           scheduleCron: payload.scheduleCron,
           sites: payload.sites,
         });
@@ -424,6 +430,20 @@ export function CampaignConfigPage() {
           <ScanDepthSlider
             value={form.scanDepth}
             onChange={(v) => updateField('scanDepth', v)}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Section 5 — Maximum Pages */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Page Limit</CardTitle>
+          <CardDescription>Limit the number of pages to scan per website</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MaxPagesInput
+            value={form.maxPagesToScan}
+            onChange={(v) => updateField('maxPagesToScan', v)}
           />
         </CardContent>
       </Card>

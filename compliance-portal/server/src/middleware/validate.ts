@@ -18,6 +18,7 @@ export interface ValidatedCampaignBody {
   complianceLevel: ComplianceLevel;
   categories: AuditCategory[];
   scanDepth: number;
+  maxPagesToScan: number | null;
   scheduleCron: string | null;
   sites: { url: string; label: string }[];
 }
@@ -56,6 +57,17 @@ export function validateCampaignCreate(body: unknown): ValidatedCampaignBody {
     errors.push('scanDepth must be an integer between 1 and 5');
   }
 
+  // maxPagesToScan
+  let maxPagesToScan: number | null = null;
+  if (b.maxPagesToScan !== undefined && b.maxPagesToScan !== null) {
+    const mpts = Number(b.maxPagesToScan);
+    if (!Number.isInteger(mpts) || mpts < 1) {
+      errors.push('maxPagesToScan must be a positive integer or null');
+    } else {
+      maxPagesToScan = mpts;
+    }
+  }
+
   // scheduleCron
   const scheduleCron = b.scheduleCron !== undefined ? (b.scheduleCron as string | null) : null;
 
@@ -80,6 +92,7 @@ export function validateCampaignCreate(body: unknown): ValidatedCampaignBody {
     complianceLevel: b.complianceLevel as ComplianceLevel,
     categories: b.categories as AuditCategory[],
     scanDepth,
+    maxPagesToScan,
     scheduleCron,
     sites: (b.sites as { url: string; label?: string }[]).map((s) => ({
       url: s.url,
@@ -132,6 +145,19 @@ export function validateCampaignUpdate(body: unknown): Record<string, unknown> {
       errors.push('scanDepth must be an integer between 1 and 5');
     } else {
       result.scanDepth = sd;
+    }
+  }
+
+  if (b.maxPagesToScan !== undefined) {
+    if (b.maxPagesToScan === null) {
+      result.maxPagesToScan = null;
+    } else {
+      const mpts = Number(b.maxPagesToScan);
+      if (!Number.isInteger(mpts) || mpts < 1) {
+        errors.push('maxPagesToScan must be a positive integer or null');
+      } else {
+        result.maxPagesToScan = mpts;
+      }
     }
   }
 

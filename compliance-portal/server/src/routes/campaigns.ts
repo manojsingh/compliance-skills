@@ -141,6 +141,7 @@ router.post(
       complianceLevel: campaign.complianceLevel,
       categories: campaign.categories,
       scanDepth: campaign.scanDepth,
+      maxPagesToScan: campaign.maxPagesToScan,
     }).catch((err) => {
       console.error(`Background scan ${scan.id} error:`, err);
     });

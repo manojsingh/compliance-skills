@@ -65,14 +65,15 @@ function isSameDomain(base: string, candidate: string): boolean {
  * BFS crawl starting from startUrl.
  * - Follows same-domain links only
  * - maxDepth: 1 = just the start URL, 2 = start + linked pages, etc.
+ * - maxPages: maximum number of pages to crawl (null = no limit, defaults to MAX_PAGES constant)
  * - Deduplicates URLs
  * - Skips non-HTML resources
- * - Limits to MAX_PAGES per site
  */
 export async function crawlSite(
   page: Page,
   startUrl: string,
   maxDepth: number,
+  maxPages: number | null = null,
 ): Promise<string[]> {
   const visited = new Set<string>();
   const queue: Array<{ url: string; depth: number }> = [];
@@ -83,12 +84,15 @@ export async function crawlSite(
 
   const discoveredPages: string[] = [];
 
+  // Use configured maxPages, or fall back to MAX_PAGES constant
+  const effectiveMaxPages = maxPages ?? MAX_PAGES;
+
   // The effective domain may differ from startUrl if the site redirects
   // (e.g. example.com → www.example.com). We resolve it after the first
   // successful navigation so that same-domain checks work correctly.
   let effectiveDomain: string = startUrl;
 
-  while (queue.length > 0 && discoveredPages.length < MAX_PAGES) {
+  while (queue.length > 0 && discoveredPages.length < effectiveMaxPages) {
     const current = queue.shift()!;
     discoveredPages.push(current.url);
 
@@ -144,7 +148,7 @@ export async function crawlSite(
 
       const newLinks: string[] = [];
       for (const link of links) {
-        if (discoveredPages.length + queue.length >= MAX_PAGES) break;
+        if (discoveredPages.length + queue.length >= effectiveMaxPages) break;
 
         const norm = normalizeUrl(link);
         if (visited.has(norm)) continue;

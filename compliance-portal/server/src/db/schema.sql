@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   compliance_level TEXT NOT NULL CHECK(compliance_level IN ('A', 'AA', 'AAA')),
   categories TEXT NOT NULL DEFAULT '[]',
   scan_depth INTEGER NOT NULL DEFAULT 2 CHECK(scan_depth BETWEEN 1 AND 5),
+  max_pages_to_scan INTEGER DEFAULT NULL,
   schedule_cron TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'completed')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

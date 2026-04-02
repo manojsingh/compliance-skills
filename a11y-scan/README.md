@@ -4,12 +4,6 @@
 
 Run WCAG 2.1 accessibility scans on any URL directly from chat. Uses Playwright and axe-core to perform automated accessibility testing and produces a self-contained HTML report with scores, violations, and code snippets. Works with GitHub Copilot or any coding agent.
 
-## Quick Start
-
-```bash
-npx @anthropic/a11y-scan install
-```
-
 The installer auto-detects which coding agents you use and configures each one.
 
 ## Supported Agents
@@ -17,7 +11,6 @@ The installer auto-detects which coding agents you use and configures each one.
 | Agent | Detection Signal | What Gets Installed |
 |-------|-----------------|-------------------|
 | **GitHub Copilot** | `.github/` or `.github/copilot-instructions.md` | SKILL.md + prompt files |
-| **Generic** | (fallback) | Instructions in `.skills/` |
 
 Multiple agents can be active simultaneously — the installer configures all detected agents.
 
@@ -31,20 +24,9 @@ cd a11y-scan/
 node install.mjs install --target /path/to/your/project
 ```
 
-## Uninstall
-
-
-This reads the `skill.lock` file and removes all installed files cleanly.
-
 ## Installed Files
 
 ### Runtime (all agents)
-
-| Path | Description |
-|------|-------------|
-| `.skills/a11y-scan/scripts/a11y-scan.mjs` | Scanner script (Playwright + axe-core) |
-| `.skills/a11y-scan/prompts/*.md` | Agent-agnostic prompt templates |
-| `.skills/a11y-scan/skill.lock` | Install manifest for clean uninstall |
 
 ### GitHub Copilot
 

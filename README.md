@@ -1,6 +1,6 @@
 # Compliance Skills
 
-This repository contains accessibility and compliance tools:
+This repository contains accessibility scanning tools:
 
 ## Projects
 

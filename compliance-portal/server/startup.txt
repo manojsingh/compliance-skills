@@ -1,0 +1,12 @@
+# Azure App Service - Startup Command Configuration
+
+# This file documents the recommended startup command for Azure App Service
+
+# Basic startup (production)
+node dist/index.js
+
+# With debugging enabled
+NODE_OPTIONS='--inspect' node dist/index.js
+
+# For environments requiring specific memory settings
+NODE_OPTIONS='--max-old-space-size=2048' node dist/index.js

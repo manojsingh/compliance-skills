@@ -62,6 +62,7 @@ export function useCampaigns(): UseCampaignsResult {
         return {
           ...c,
           siteCount: c.siteCount ?? c.sites?.length ?? 0,
+          scanCount: c.scanCount ?? 0,
           latestScore,
           lastScanDate: c.latestScanDate ?? null,
           scheduleLabel: getScheduleLabel(c.scheduleCron),

@@ -14,6 +14,9 @@ type ExecuteScanFn = (config: {
   complianceLevel: 'A' | 'AA' | 'AAA';
   categories: string[];
   scanDepth: number;
+  maxPagesToScan: number | null;
+  siteConcurrency: number;
+  pageConcurrency: number;
 }) => Promise<void>;
 
 let executeScan: ExecuteScanFn | null = null;

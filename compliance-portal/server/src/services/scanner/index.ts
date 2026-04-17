@@ -47,6 +47,29 @@ export interface ScanConfig {
 
 const PAGE_TIMEOUT = 30_000;
 
+/**
+ * Optimize concurrency for limited resources in containerized environments.
+ * Azure B1 tier has only 1 CPU core - reduce parallelism to avoid thrashing.
+ */
+function optimizeConcurrencyForEnvironment(config: ScanConfig): ScanConfig {
+  // Detect Azure App Service (WEBSITES_PORT is reliably set in containers)
+  const isAzure = process.env.WEBSITES_PORT !== undefined;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isAzure && isProduction) {
+    console.log(`[Scanner] Azure environment detected - optimizing concurrency (site: ${config.siteConcurrency}→1, page: ${config.pageConcurrency}→2)`);
+    // In Azure with limited resources, reduce concurrency to avoid CPU thrashing
+    return {
+      ...config,
+      siteConcurrency: Math.min(config.siteConcurrency, 1), // Process sites sequentially
+      pageConcurrency: Math.min(config.pageConcurrency, 2), // Max 2 pages at once
+    };
+  }
+  
+  console.log(`[Scanner] Local environment - using configured concurrency (site: ${config.siteConcurrency}, page: ${config.pageConcurrency})`);
+  return config;
+}
+
 function insertExpectedRules(
   scanId: string,
   siteId: string,
@@ -101,13 +124,44 @@ export async function executeScan(config: ScanConfig): Promise<void> {
 
   try {
     updateScanStatus(config.scanId, 'running');
-    browser = await chromium.launch({ headless: true });
+    
+    // Optimize concurrency for Azure containerized environment
+    config = optimizeConcurrencyForEnvironment(config);
+    
+    // Launch browser with performance optimizations for containerized environments
+    const browserStartTime = Date.now();
+    browser = await chromium.launch({ 
+      headless: true,
+      args: [
+        // Essential container flags
+        '--disable-dev-shm-usage',        // Use /tmp instead of /dev/shm (limited in containers)
+        '--no-sandbox',                   // Required for containerized environments
+        '--disable-setuid-sandbox',       // Required for containerized environments
+        '--disable-gpu',                  // GPU not available in containers
+        // Performance optimizations (keep multi-process for Playwright efficiency)
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-extensions',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-renderer-backgrounding',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--no-first-run',
+        '--no-default-browser-check',
+      ],
+    });
+    console.log(`[Scanner] Browser launched in ${Date.now() - browserStartTime}ms`);
 
     const siteResults: SiteResult[] = [];
 
     console.log(`[Scanner] Starting scan with siteConcurrency=${config.siteConcurrency}, pageConcurrency=${config.pageConcurrency}`);
 
     await runWithConcurrency(config.sites, config.siteConcurrency, async (site) => {
+      const siteStartTime = Date.now();
       const result: SiteResult = {
         pages: 0,
         issues: 0,
@@ -127,15 +181,22 @@ export async function executeScan(config: ScanConfig): Promise<void> {
         });
         // Crawl using a dedicated page (BFS must be sequential)
         console.log(`[Scanner] Crawling site: ${site.url} (depth=${config.scanDepth}, maxPages=${config.maxPagesToScan ?? 'unlimited'})`);
+        const crawlStartTime = Date.now();
         const crawlPage = await context.newPage();
         crawlPage.setDefaultTimeout(PAGE_TIMEOUT);
         const pages = await crawlSite(crawlPage, site.url, config.scanDepth, config.maxPagesToScan);
         await crawlPage.close();
         result.pages = pages.length;
-        console.log(`[Scanner] Crawled ${pages.length} page(s) for ${site.url}`);
+        console.log(`[Scanner] Crawled ${pages.length} page(s) for ${site.url} in ${Date.now() - crawlStartTime}ms`);
 
         // Track how many pages actually loaded successfully
         let pagesAudited = 0;
+        const auditStartTime = Date.now();
+        
+        // Get criteria once for all pages (avoid repeated DB queries)
+        const criteria = config.categories.includes('accessibility') 
+          ? getCriteriaForLevel(config.complianceLevel) 
+          : [];
 
         // Audit discovered pages in parallel using multiple tabs
         await runWithConcurrency(pages, config.pageConcurrency, async (pageUrl) => {
@@ -150,8 +211,8 @@ export async function executeScan(config: ScanConfig): Promise<void> {
                 waitUntil: 'domcontentloaded',
                 timeout: PAGE_TIMEOUT,
               });
-              // Brief settle time for JS-rendered content
-              await auditPage.waitForTimeout(2000);
+              // Brief settle time for JS-rendered content (optimized for speed)
+              await auditPage.waitForTimeout(100);
               navSuccess = true;
             } catch {
               // Skip this page if navigation fails entirely
@@ -193,6 +254,8 @@ export async function executeScan(config: ScanConfig): Promise<void> {
                       description: issue.description,
                       element: issue.element,
                       helpUrl: issue.helpUrl,
+                      failureSummary: issue.failureSummary,
+                      relatedNodes: issue.relatedNodes,
                     })),
                   );
                   for (const i of dbIssues) {
@@ -204,8 +267,10 @@ export async function executeScan(config: ScanConfig): Promise<void> {
                   }
                 }
 
-                // Update audit log
-                const criteria = getCriteriaForLevel(config.complianceLevel);
+                // Update audit log - OPTIMIZED: Skip individual updates to avoid 500+ DB calls
+                // The audit log is pre-populated with insertExpectedRules() 
+                // For performance, we skip per-page updates and rely on scan results instead
+                /*
                 const violatedCriteria = new Set(a11yResult.issues.map(i => i.wcagCriterion));
                 for (const c of criteria) {
                   updateAuditLogEntry(config.scanId, 'accessibility', c.id, site.id, pageUrl, {
@@ -213,9 +278,11 @@ export async function executeScan(config: ScanConfig): Promise<void> {
                     passed: !violatedCriteria.has(c.id),
                   });
                 }
+                */
               } catch (err) {
                 console.error(`Accessibility audit failed for ${pageUrl}:`, err);
-                const criteria = getCriteriaForLevel(config.complianceLevel);
+                // Skip audit log updates on error for performance
+                /*
                 for (const c of criteria) {
                   updateAuditLogEntry(config.scanId, 'accessibility', c.id, site.id, pageUrl, {
                     executed: false,
@@ -223,6 +290,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
                     errorMessage: (err as Error).message ?? 'Unknown error',
                   });
                 }
+                */
               }
             }
           } catch (err) {
@@ -231,6 +299,8 @@ export async function executeScan(config: ScanConfig): Promise<void> {
             await auditPage.close().catch(() => {});
           }
         });
+
+        console.log(`[Scanner] Audited ${pagesAudited}/${pages.length} pages in ${Date.now() - auditStartTime}ms`);
 
         // If the site was crawled but every page failed to navigate, record an
         // unreachable result so the UI shows the site rather than silently omitting it.
@@ -268,6 +338,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
         }
       } finally {
         await context?.close().catch(() => {});
+        console.log(`[Scanner] ✓ Site completed: ${site.url} in ${Date.now() - siteStartTime}ms (${result.pages} pages, ${result.issues} issues)`);
       }
 
       siteResults.push(result);

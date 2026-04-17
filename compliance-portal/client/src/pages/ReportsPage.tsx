@@ -19,7 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { FileBarChart, Download, Loader2, Plus, ExternalLink } from 'lucide-react';
-import { reportApi, scanApi } from '@/lib/api';
+import { reportApi } from '@/lib/api';
 import { useReports } from '@/hooks/useReports';
 import { toast } from 'sonner';
 

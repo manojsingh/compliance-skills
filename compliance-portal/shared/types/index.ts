@@ -61,6 +61,8 @@ export interface ScanIssue {
   description: string;
   element: string;
   helpUrl: string;
+  failureSummary?: string;
+  relatedNodes?: string[];
 }
 
 export type ComplianceLevel = 'A' | 'AA' | 'AAA';

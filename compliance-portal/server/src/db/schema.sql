@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS scan_issues (
   wcag_level TEXT CHECK(wcag_level IN ('A', 'AA', 'AAA')),
   description TEXT NOT NULL,
   element TEXT,
-  help_url TEXT
+  help_url TEXT,
+  failure_summary TEXT,
+  related_nodes TEXT
 );
 
 -- Indexes on foreign keys and commonly queried columns

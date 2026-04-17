@@ -59,6 +59,8 @@ interface ScanIssueRow {
   description: string;
   element: string;
   help_url: string;
+  failure_summary: string | null;
+  related_nodes: string | null;
 }
 
 interface CampaignSiteRow {
@@ -119,6 +121,8 @@ function toScanIssue(row: ScanIssueRow): ScanIssue {
     description: row.description,
     element: row.element,
     helpUrl: row.help_url,
+    failureSummary: row.failure_summary || undefined,
+    relatedNodes: row.related_nodes ? JSON.parse(row.related_nodes) : undefined,
   };
 }
 
@@ -307,42 +311,106 @@ export function updateCampaign(id: string, data: UpdateCampaignInput): Campaign 
 }
 
 const deleteCampaignStmt = db.prepare(`DELETE FROM campaigns WHERE id = ?`);
-const deleteScanIssuesByResultStmt = db.prepare(`DELETE FROM scan_issues WHERE result_id IN (SELECT id FROM scan_results WHERE scan_id IN (SELECT id FROM scans WHERE campaign_id = ?))`);
-const deleteScanAuditLogByCampaignStmt = db.prepare(`DELETE FROM scan_audit_log WHERE scan_id IN (SELECT id FROM scans WHERE campaign_id = ?)`);
-const deleteScanResultsByCampaignStmt = db.prepare(`DELETE FROM scan_results WHERE scan_id IN (SELECT id FROM scans WHERE campaign_id = ?)`);
-const deleteScansByCampaignStmt = db.prepare(`DELETE FROM scans WHERE campaign_id = ?`);
 const deleteCampaignSitesStmt = db.prepare(`DELETE FROM campaign_sites WHERE campaign_id = ?`);
+const deleteScansByCampaignStmt = db.prepare(`DELETE FROM scans WHERE campaign_id = ?`);
+const deleteScanResultsByScanStmt = db.prepare(`DELETE FROM scan_results WHERE scan_id = ?`);
+const deleteScanIssuesByResultStmt = db.prepare(`DELETE FROM scan_issues WHERE result_id = ?`);
+const deleteScanAuditLogByScanStmt = db.prepare(`DELETE FROM scan_audit_log WHERE scan_id = ?`);
+
+// Helper queries to fetch IDs
+const getScansStmt = db.prepare(`SELECT id FROM scans WHERE campaign_id = ?`);
+const getScanResultsStmt = db.prepare(`SELECT id FROM scan_results WHERE scan_id = ?`);
 
 export function deleteCampaign(id: string): boolean {
-  const deleteOne = db.transaction((campaignId: string) => {
-    // Delete in order: issues -> audit logs -> results -> scans -> sites -> campaign
-    deleteScanIssuesByResultStmt.run(campaignId);
-    deleteScanAuditLogByCampaignStmt.run(campaignId);
-    deleteScanResultsByCampaignStmt.run(campaignId);
-    deleteScansByCampaignStmt.run(campaignId);
-    deleteCampaignSitesStmt.run(campaignId);
-    const result = deleteCampaignStmt.run(campaignId);
-    return result.changes > 0;
-  });
-  return deleteOne(id);
+  // Temporarily disable foreign key checks to avoid constraint issues during cascading deletes
+  db.pragma('foreign_keys = OFF');
+  
+  try {
+    const deleteOne = db.transaction((campaignId: string) => {
+      // Get all scans for this campaign
+      const scans = getScansStmt.all(campaignId) as { id: string }[];
+      
+      // For each scan, delete its related records
+      for (const scan of scans) {
+        // Get all scan results for this scan
+        const results = getScanResultsStmt.all(scan.id) as { id: string }[];
+        
+        // Delete scan issues for each result
+        for (const result of results) {
+          deleteScanIssuesByResultStmt.run(result.id);
+        }
+        
+        // Delete scan results for this scan
+        deleteScanResultsByScanStmt.run(scan.id);
+        
+        // Delete audit log for this scan
+        deleteScanAuditLogByScanStmt.run(scan.id);
+      }
+      
+      // Delete all scans
+      deleteScansByCampaignStmt.run(campaignId);
+      
+      // Delete campaign sites
+      deleteCampaignSitesStmt.run(campaignId);
+      
+      // Delete the campaign itself
+      const result = deleteCampaignStmt.run(campaignId);
+      return result.changes > 0;
+    });
+    
+    return deleteOne(id);
+  } finally {
+    // Re-enable foreign key checks
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 export function deleteCampaigns(ids: string[]): number {
-  const deleteMany = db.transaction((campaignIds: string[]) => {
-    let totalDeleted = 0;
-    for (const id of campaignIds) {
-      // Delete in order: issues -> audit logs -> results -> scans -> sites -> campaign
-      deleteScanIssuesByResultStmt.run(id);
-      deleteScanAuditLogByCampaignStmt.run(id);
-      deleteScanResultsByCampaignStmt.run(id);
-      deleteScansByCampaignStmt.run(id);
-      deleteCampaignSitesStmt.run(id);
-      const result = deleteCampaignStmt.run(id);
-      totalDeleted += result.changes;
-    }
-    return totalDeleted;
-  });
-  return deleteMany(ids);
+  // Temporarily disable foreign key checks to avoid constraint issues during cascading deletes
+  db.pragma('foreign_keys = OFF');
+  
+  try {
+    const deleteMany = db.transaction((campaignIds: string[]) => {
+      let totalDeleted = 0;
+      for (const campaignId of campaignIds) {
+        // Get all scans for this campaign
+        const scans = getScansStmt.all(campaignId) as { id: string }[];
+        
+        // For each scan, delete its related records
+        for (const scan of scans) {
+          // Get all scan results for this scan
+          const results = getScanResultsStmt.all(scan.id) as { id: string }[];
+          
+          // Delete scan issues for each result
+          for (const result of results) {
+            deleteScanIssuesByResultStmt.run(result.id);
+          }
+          
+          // Delete scan results for this scan
+          deleteScanResultsByScanStmt.run(scan.id);
+          
+          // Delete audit log for this scan
+          deleteScanAuditLogByScanStmt.run(scan.id);
+        }
+        
+        // Delete all scans
+        deleteScansByCampaignStmt.run(campaignId);
+        
+        // Delete campaign sites
+        deleteCampaignSitesStmt.run(campaignId);
+        
+        // Delete the campaign itself
+        const result = deleteCampaignStmt.run(campaignId);
+        totalDeleted += result.changes;
+      }
+      return totalDeleted;
+    });
+    
+    return deleteMany(ids);
+  } finally {
+    // Re-enable foreign key checks
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -466,8 +534,8 @@ export function insertScanResult(data: InsertScanResultInput): ScanResult {
 }
 
 const insertScanIssueStmt = db.prepare(`
-  INSERT INTO scan_issues (id, result_id, severity, wcag_criterion, wcag_level, description, element, help_url)
-  VALUES (@id, @result_id, @severity, @wcag_criterion, @wcag_level, @description, @element, @help_url)
+  INSERT INTO scan_issues (id, result_id, severity, wcag_criterion, wcag_level, description, element, help_url, failure_summary, related_nodes)
+  VALUES (@id, @result_id, @severity, @wcag_criterion, @wcag_level, @description, @element, @help_url, @failure_summary, @related_nodes)
 `);
 
 export interface InsertScanIssueInput {
@@ -478,6 +546,8 @@ export interface InsertScanIssueInput {
   description: string;
   element?: string;
   helpUrl?: string;
+  failureSummary?: string;
+  relatedNodes?: string[];
 }
 
 export function insertScanIssues(issues: InsertScanIssueInput[]): ScanIssue[] {
@@ -495,6 +565,8 @@ export function insertScanIssues(issues: InsertScanIssueInput[]): ScanIssue[] {
         description: issue.description,
         element: issue.element ?? '',
         help_url: issue.helpUrl ?? '',
+        failure_summary: issue.failureSummary ?? null,
+        related_nodes: issue.relatedNodes ? JSON.stringify(issue.relatedNodes) : null,
       });
       inserted.push({
         id,

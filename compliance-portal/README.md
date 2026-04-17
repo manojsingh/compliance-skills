@@ -35,6 +35,8 @@ Compliance Portal lets teams continuously monitor websites for WCAG 2.1 accessib
 
 ## Architecture
 
+**Production Deployment**: Azure App Service (Linux, Node.js 20) + Azure PostgreSQL Flexible Server
+
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                        Browser                           │
@@ -44,6 +46,7 @@ Compliance Portal lets teams continuously monitor websites for WCAG 2.1 accessib
                          │  /api/* (proxied in dev)
 ┌────────────────────────▼─────────────────────────────────┐
 │                  Express Server (port 3001)               │
+│              Azure App Service (Production)              │
 │                                                          │
 │  Routes:  /api/campaigns  /api/scans  /api/reports       │
 │           /api/dashboard  /api/wcag   /api/scheduler      │
@@ -55,8 +58,9 @@ Compliance Portal lets teams continuously monitor websites for WCAG 2.1 accessib
 │    Scheduler──▶ node-cron Recurring Scans                │
 │    Importer ──▶ CSV / JSON / PDF WCAG rule import        │
 │                                                          │
-│  Database: better-sqlite3 (WAL mode)                     │
-│    compliance.db ──▶ data/compliance.db                  │
+│  Database: Environment-Aware                             │
+│    Local:  SQLite (better-sqlite3, WAL mode)             │
+│    Azure:  PostgreSQL Flexible Server v17                │
 │  Reports:  data/reports/*.pdf                            │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -254,7 +258,44 @@ Build outputs:
 
 ## Deploying to Production
 
-### Option A — Single Server (serve client as static files)
+### ⭐ Recommended: Azure App Service (Production-Ready)
+
+The application is production-ready for Azure with all issues resolved and optimizations applied.
+
+**Quick Deploy**:
+```bash
+cd infra
+az group create --name compliance-portal-rg --location centralus
+az deployment group create \
+  --resource-group compliance-portal-rg \
+  --template-file main.bicep \
+  --parameters main.parameters.json \
+  --parameters postgresAdminPassword='YourSecurePassword123!'
+```
+
+**What's Included**:
+- ✅ Azure App Service (B1 SKU) - AlwaysOn, no quotas
+- ✅ Azure PostgreSQL Flexible Server v17
+- ✅ System-Assigned Managed Identity
+- ✅ Application Insights monitoring
+- ✅ Environment-aware database (PostgreSQL on Azure, SQLite locally)
+- ✅ Optimized build (no SCM build, pre-installed dependencies)
+- ✅ Playwright optimization (skip browser download)
+- ✅ SSL required for PostgreSQL (10s timeout)
+
+**Comprehensive Guide**: See [infra/PRODUCTION_DEPLOYMENT_GUIDE.md](./infra/PRODUCTION_DEPLOYMENT_GUIDE.md) for:
+- Complete deployment steps
+- All issues encountered and solutions
+- Troubleshooting guide
+- Performance optimization
+- Security best practices
+- Cost estimation (~$33/month)
+
+---
+
+### Alternative Options
+
+#### Option A — Single Server (serve client as static files)
 
 Serve the compiled client bundle from the Express server by adding a static middleware. Then deploy the whole thing to any Node.js host (Railway, Render, Fly.io, EC2, etc.).
 
@@ -286,7 +327,7 @@ Serve the compiled client bundle from the Express server by adding a static midd
    pm2 save && pm2 startup
    ```
 
-### Option B — Separate Frontend CDN + Backend API
+#### Option B — Separate Frontend CDN + Backend API
 
 1. **Deploy the client** bundle (`client/dist/`) to any static host (Vercel, Netlify, Cloudflare Pages, S3 + CloudFront).
 
@@ -301,11 +342,11 @@ Serve the compiled client bundle from the Express server by adding a static midd
    VITE_API_URL=https://api.your-domain.com
    ```
 
-### Option C — Docker (full-stack, single container)
+#### Option C — Docker (full-stack, single container)
 
 This option packages **both the React frontend and the Express backend** into one container. The Express server serves the compiled React bundle as static files, so only port 3001 is needed.
 
-#### Step 1 — Add static file serving to the Express app
+##### Step 1 — Add static file serving to the Express app
 
 Add the following lines to `server/src/app.ts` **before** the 404 handler (the `app.use('/api/*', ...)` block):
 

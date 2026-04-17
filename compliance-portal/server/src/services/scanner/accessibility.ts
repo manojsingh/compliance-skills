@@ -13,6 +13,8 @@ export interface AccessibilityIssue {
   description: string;
   element: string;
   helpUrl: string;
+  failureSummary?: string;
+  relatedNodes?: string[];
 }
 
 export interface AccessibilityResult {
@@ -70,6 +72,18 @@ export async function auditAccessibility(
     const criterion = mapAxeRuleToCriterion(violation.id);
 
     for (const node of violation.nodes) {
+      // Extract failure summary which includes diagnostic details like color values
+      const failureSummary = node.failureSummary || '';
+      
+      // Extract related nodes (e.g., background elements for contrast issues)
+      const relatedNodes = node.any
+        .concat(node.all || [])
+        .concat(node.none || [])
+        .flatMap((check: any) => check.relatedNodes || [])
+        .map((rn: any) => rn.html)
+        .filter((html: string) => html)
+        .slice(0, 3); // Limit to 3 related nodes
+      
       issues.push({
         severity: mapImpactToSeverity(violation.impact),
         wcagCriterion: criterion?.id ?? '',
@@ -77,6 +91,8 @@ export async function auditAccessibility(
         description: violation.help,
         element: node.html.slice(0, 500),
         helpUrl: violation.helpUrl,
+        failureSummary: failureSummary || undefined,
+        relatedNodes: relatedNodes.length > 0 ? relatedNodes : undefined,
       });
     }
   }

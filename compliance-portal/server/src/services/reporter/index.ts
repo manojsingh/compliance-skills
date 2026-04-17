@@ -96,29 +96,43 @@ const listReportsStmt = db.prepare(
 // ---------------------------------------------------------------------------
 
 function addPageFooter(doc: InstanceType<typeof PDFDocument>, pageNum: number) {
-  doc.save();
+  // Temporarily disable bottom margin so PDFKit doesn't auto-add a page
+  // when writing near the bottom of the page (y=750 > maxY of 742)
+  const savedBottom = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
+  
   doc
     .fontSize(8)
     .fillColor(COLORS.gray)
     .text(`Page ${pageNum}`, PAGE_MARGIN, 750, {
       width: CONTENT_WIDTH,
       align: 'center',
+      lineBreak: false,
     });
-  doc.restore();
+  
+  doc.page.margins.bottom = savedBottom;
+  doc.fillColor(COLORS.black);
 }
 
 function addPageHeader(doc: InstanceType<typeof PDFDocument>, title: string) {
+  // Temporarily disable top margin so PDFKit doesn't interfere
+  const savedTop = doc.page.margins.top;
+  doc.page.margins.top = 0;
+  
   doc
     .rect(0, 0, PAGE_WIDTH, 40)
     .fill(COLORS.blue);
   doc
     .fontSize(10)
     .fillColor(COLORS.white)
-    .text('WCAG Compliance Portal', PAGE_MARGIN, 14, { width: CONTENT_WIDTH });
+    .text('WCAG Compliance Portal', PAGE_MARGIN, 14, { width: CONTENT_WIDTH, lineBreak: false });
   doc
     .fontSize(10)
     .fillColor(COLORS.white)
-    .text(title, PAGE_MARGIN, 14, { width: CONTENT_WIDTH, align: 'right' });
+    .text(title, PAGE_MARGIN, 14, { width: CONTENT_WIDTH, align: 'right', lineBreak: false });
+  
+  doc.page.margins.top = savedTop;
+  doc.fillColor(COLORS.black);
 }
 
 function drawHorizontalRule(doc: InstanceType<typeof PDFDocument>, y: number) {
@@ -329,9 +343,13 @@ function renderSiteResults(
 
   let pageNum = startPage;
 
-  for (const sd of siteDataList) {
+  for (let i = 0; i < siteDataList.length; i++) {
+    const sd = siteDataList[i];
+    
+    // Add a new page for each site
     doc.addPage();
     pageNum++;
+    
     addPageHeader(doc, 'Site Results');
 
     let y = 60;
@@ -440,6 +458,10 @@ function renderDetailedFindings(
 
   let pageNum = startPage;
 
+  // Check if there are any issues to render
+  const hasIssues = siteDataList.some(sd => sd.issues.length > 0);
+  if (!hasIssues) return pageNum;
+
   doc.addPage();
   pageNum++;
   addPageHeader(doc, 'Detailed Findings');
@@ -502,6 +524,16 @@ function renderDetailedFindings(
         width: CONTENT_WIDTH - 20,
       });
       y += doc.heightOfString(issue.description, { width: CONTENT_WIDTH - 20 }) + 6;
+
+      // Failure summary with diagnostic details (e.g., color values)
+      if (issue.failureSummary) {
+        doc.fontSize(8).fillColor(COLORS.gray).text('Details:', PAGE_MARGIN + 10, y, { continued: true });
+        doc.fillColor(COLORS.black).text(` ${issue.failureSummary}`, {
+          width: CONTENT_WIDTH - 30,
+          continued: false,
+        });
+        y += doc.heightOfString(` ${issue.failureSummary}`, { width: CONTENT_WIDTH - 30 }) + 8;
+      }
 
       // Affected element
       if (issue.element) {
@@ -684,11 +716,13 @@ export async function generateReport(options: ReportOptions): Promise<Buffer> {
     pageNum++;
     pageNum = renderExecutiveSummary(doc, campaign, scan, summary, siteDataList, pageNum);
 
-    // Page 3+ — Per-Site Results
-    pageNum = renderSiteResults(doc, siteDataList, pageNum);
+    // Page 3+ — Per-Site Results (only if there are sites with results)
+    if (siteDataList.length > 0) {
+      pageNum = renderSiteResults(doc, siteDataList, pageNum);
+    }
 
-    // Detailed Findings (optional)
-    if (includeDetails) {
+    // Detailed Findings (optional, only if requested and there are issues)
+    if (includeDetails && siteDataList.some(sd => sd.issues.length > 0)) {
       pageNum = renderDetailedFindings(doc, siteDataList, pageNum);
     }
 

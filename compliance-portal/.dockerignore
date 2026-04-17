@@ -1,0 +1,17 @@
+node_modules
+dist
+*.log
+.env
+.env.local
+.git
+.gitignore
+*.md
+!README.md
+.vscode
+coverage
+.DS_Store
+*.zip
+infra
+docs
+data/reports/*
+!data/reports/.gitkeep

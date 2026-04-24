@@ -338,7 +338,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
         }
       } finally {
         await context?.close().catch(() => {});
-        console.log(`[Scanner] ✓ Site completed: ${site.url} in ${Date.now() - siteStartTime}ms (${result.pages} pages, ${result.issues} issues)`);
+        console.log(`[Scanner] Site completed: ${site.url} in ${Date.now() - siteStartTime}ms (${result.pages} pages, ${result.issues} issues)`);
       }
 
       siteResults.push(result);

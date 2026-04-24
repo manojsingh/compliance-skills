@@ -23,6 +23,22 @@ import db from '../db/index.js';
 import { importFromFile, importToDatabase } from '../services/importer/index.js';
 import type { ParseResult } from '../services/importer/index.js';
 import type { ComplianceLevel } from '@compliance-portal/shared';
+import PostgresDatabase from '../db/postgres.js';
+import * as pgWcagQueries from '../db/wcag-queries-postgres.js';
+
+// Detect PostgreSQL primary mode
+const USE_POSTGRES_PRIMARY = Boolean(process.env.PGHOST || process.env.DATABASE_URL);
+const pgDb = USE_POSTGRES_PRIMARY
+  ? new PostgresDatabase({
+      host: process.env.PGHOST || 'localhost',
+      port: parseInt(process.env.PGPORT || '5432', 10),
+      database: process.env.PGDATABASE || 'compliancedb',
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      ssl: process.env.PGSSLMODE === 'require',
+      useAzureAuth: process.env.AZURE_POSTGRESQL_PASSWORDLESS === 'true',
+    })
+  : null;
 
 const router = Router();
 
@@ -74,6 +90,32 @@ function enrichCriteria(rawCriteria: ReturnType<typeof getAllCriteria>) {
   });
 }
 
+async function enrichCriteriaAsync(rawCriteria: Awaited<ReturnType<typeof pgWcagQueries.getAllCriteriaPostgres>>) {
+  const principles = await pgWcagQueries.getAllPrinciplesPostgres(pgDb!);
+  const guidelines = await pgWcagQueries.getAllGuidelinesPostgres(pgDb!);
+
+  const principleMap = new Map(principles.map((p) => [p.id, p.name]));
+  const guidelineMap = new Map(guidelines.map((g) => [g.id, { name: g.name, principleId: g.principleId }]));
+
+  return rawCriteria.map((c) => {
+    const gl = guidelineMap.get(c.guidelineId);
+    const principleId = gl?.principleId ?? c.guidelineId.split('.')[0] ?? '';
+    return {
+      id: c.id,
+      criterionId: c.id,
+      name: c.name,
+      level: c.level,
+      principle: principleId,
+      principleName: principleMap.get(principleId) ?? '',
+      guideline: c.guidelineId,
+      guidelineName: gl?.name ?? '',
+      description: c.description,
+      helpUrl: c.helpUrl ?? '',
+      axeRules: c.axeRules,
+    };
+  });
+}
+
 // GET /api/wcag/criteria — List all criteria (optionally filtered by level)
 router.get(
   '/criteria',
@@ -83,11 +125,18 @@ router.get(
       throw new ValidationError('Invalid level. Must be A, AA, or AAA.');
     }
 
-    const raw = levelParam
-      ? getCriteriaByLevel(levelParam as ComplianceLevel)
-      : getAllCriteria();
-
-    res.json(enrichCriteria(raw));
+    let raw;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      raw = levelParam
+        ? await pgWcagQueries.getCriteriaByLevelPostgres(pgDb, levelParam as ComplianceLevel)
+        : await pgWcagQueries.getAllCriteriaPostgres(pgDb);
+      res.json(await enrichCriteriaAsync(raw));
+    } else {
+      raw = levelParam
+        ? getCriteriaByLevel(levelParam as ComplianceLevel)
+        : getAllCriteria();
+      res.json(enrichCriteria(raw));
+    }
   }),
 );
 
@@ -95,9 +144,20 @@ router.get(
 router.get(
   '/criteria/:id',
   asyncHandler(async (req, res) => {
-    const criterion = getCriterionById(req.params.id as string);
+    let criterion;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      criterion = await pgWcagQueries.getCriterionByIdPostgres(pgDb, req.params.id as string);
+    } else {
+      criterion = getCriterionById(req.params.id as string);
+    }
+    
     if (!criterion) throw new NotFoundError('Criterion');
-    res.json(enrichCriteria([criterion])[0]);
+    
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      res.json((await enrichCriteriaAsync([criterion]))[0]);
+    } else {
+      res.json(enrichCriteria([criterion])[0]);
+    }
   }),
 );
 
@@ -105,7 +165,11 @@ router.get(
 router.get(
   '/principles',
   asyncHandler(async (_req, res) => {
-    res.json(getAllPrinciples());
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      res.json(await pgWcagQueries.getAllPrinciplesPostgres(pgDb));
+    } else {
+      res.json(getAllPrinciples());
+    }
   }),
 );
 
@@ -113,7 +177,12 @@ router.get(
 router.get(
   '/guidelines',
   asyncHandler(async (_req, res) => {
-    const guidelines = getAllGuidelines();
+    let guidelines;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      guidelines = await pgWcagQueries.getAllGuidelinesPostgres(pgDb);
+    } else {
+      guidelines = getAllGuidelines();
+    }
     // Return shape the client expects: { id, name, principleId }
     res.json(guidelines.map((g) => ({ id: g.id, name: g.name, principleId: g.principleId })));
   }),
@@ -123,15 +192,26 @@ router.get(
 router.get(
   '/stats',
   asyncHandler(async (_req, res) => {
-    const allLevelA = getLevelStats('A');
-    // AA cumulative - subtract A-only counts
-    const allCriteria = getAllCriteria();
-    const aCount = allCriteria.filter((c) => c.level === 'A').length;
-    const aaCount = allCriteria.filter((c) => c.level === 'AA').length;
-    const aaaCount = allCriteria.filter((c) => c.level === 'AAA').length;
-    const totalCriteria = allCriteria.length;
-    const automated = allCriteria.filter((c) => c.axeRules.length > 0).length;
-    const manual = totalCriteria - automated;
+    let totalCriteria, aCount, aaCount, aaaCount, automated, manual;
+    
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      const allCriteria = await pgWcagQueries.getAllCriteriaPostgres(pgDb);
+      aCount = allCriteria.filter((c) => c.level === 'A').length;
+      aaCount = allCriteria.filter((c) => c.level === 'AA').length;
+      aaaCount = allCriteria.filter((c) => c.level === 'AAA').length;
+      totalCriteria = allCriteria.length;
+      automated = allCriteria.filter((c) => c.axeRules.length > 0).length;
+      manual = totalCriteria - automated;
+    } else {
+      const allLevelA = getLevelStats('A');
+      const allCriteria = getAllCriteria();
+      aCount = allCriteria.filter((c) => c.level === 'A').length;
+      aaCount = allCriteria.filter((c) => c.level === 'AA').length;
+      aaaCount = allCriteria.filter((c) => c.level === 'AAA').length;
+      totalCriteria = allCriteria.length;
+      automated = allCriteria.filter((c) => c.axeRules.length > 0).length;
+      manual = totalCriteria - automated;
+    }
 
     res.json({
       totalCriteria,
@@ -242,7 +322,14 @@ router.post(
     setTimeout(() => pendingImports.delete(importId), 10 * 60 * 1000);
 
     // Determine per-criterion status (new vs existing)
-    const existingIds = new Set(getAllCriteria().map((c) => c.id));
+    let existingCriteria;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      existingCriteria = await pgWcagQueries.getAllCriteriaPostgres(pgDb);
+    } else {
+      existingCriteria = getAllCriteria();
+    }
+    
+    const existingIds = new Set(existingCriteria.map((c) => c.id));
     const criteriaPreview = parseResult.criteria.map((c) => ({
       criterionId: c.id,
       name: c.name,
@@ -293,9 +380,16 @@ router.get(
   asyncHandler(async (req, res) => {
     const format = (req.query.format as string)?.toLowerCase() || 'json';
 
-    const principles = getAllPrinciples();
-    const guidelines = getAllGuidelines();
-    const criteria = getAllCriteria();
+    let principles, guidelines, criteria;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      principles = await pgWcagQueries.getAllPrinciplesPostgres(pgDb);
+      guidelines = await pgWcagQueries.getAllGuidelinesPostgres(pgDb);
+      criteria = await pgWcagQueries.getAllCriteriaPostgres(pgDb);
+    } else {
+      principles = getAllPrinciples();
+      guidelines = getAllGuidelines();
+      criteria = getAllCriteria();
+    }
 
     if (format === 'csv') {
       const header = 'id,name,level,description,guideline_id,help_url,axe_rules';
@@ -332,15 +426,21 @@ router.get(
 router.get(
   '/imports',
   asyncHandler(async (_req, res) => {
-    const history = getImportHistory();
+    let history;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      history = await pgWcagQueries.getImportHistoryPostgres(pgDb);
+    } else {
+      history = getImportHistory();
+    }
+    
     // Map to the shape the client expects
     res.json(
-      history.map((h) => ({
+      history.map((h: any) => ({
         id: h.id,
         date: h.importedAt,
         sourceType: h.sourceType,
         filename: h.sourceName ?? h.sourceType,
-        recordsImported: h.recordsImported,
+        recordsImported: h.count ?? h.recordsImported,
         mode: 'merge', // not stored, default to merge
       })),
     );

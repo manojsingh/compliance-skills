@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import db from './index.js';
+import PostgresDatabase from './postgres.js';
 import type {
   Campaign,
   CampaignSite,
@@ -9,6 +10,23 @@ import type {
   ScanIssue,
   AuditCategory,
 } from '@compliance-portal/shared';
+
+// PostgreSQL-primary mode: when env vars are set, all reads/writes go to PostgreSQL
+const USE_POSTGRES_PRIMARY = Boolean(process.env.PGHOST || process.env.DATABASE_URL);
+
+const postgresPrimary = USE_POSTGRES_PRIMARY
+  ? new PostgresDatabase({
+      host: process.env.PGHOST || 'localhost',
+      port: parseInt(process.env.PGPORT || '5432', 10),
+      database: process.env.PGDATABASE || 'compliancedb',
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      ssl: process.env.PGSSLMODE === 'require',
+      useAzureAuth: process.env.AZURE_POSTGRESQL_PASSWORDLESS === 'true',
+    })
+  : null;
+
+console.log(`[DB] Mode: ${USE_POSTGRES_PRIMARY ? 'PostgreSQL Primary' : 'SQLite (local dev)'}`);
 
 // ---------------------------------------------------------------------------
 // Row <-> Domain type mappers
@@ -200,6 +218,7 @@ export function createCampaign(data: CreateCampaignInput): Campaign & { sites: C
 
   txn();
 
+
   const campaign = getCampaign(campaignId)!;
   return { ...campaign, sites };
 }
@@ -307,6 +326,8 @@ export function updateCampaign(id: string, data: UpdateCampaignInput): Campaign 
   });
 
   updateTxn();
+
+
   return getCampaign(id);
 }
 
@@ -358,7 +379,10 @@ export function deleteCampaign(id: string): boolean {
       return result.changes > 0;
     });
     
-    return deleteOne(id);
+    const deleted = deleteOne(id);
+    if (deleted) {
+    }
+    return deleted;
   } finally {
     // Re-enable foreign key checks
     db.pragma('foreign_keys = ON');
@@ -406,7 +430,10 @@ export function deleteCampaigns(ids: string[]): number {
       return totalDeleted;
     });
     
-    return deleteMany(ids);
+    const deletedCount = deleteMany(ids);
+    if (deletedCount > 0 && ids.length > 0) {
+    }
+    return deletedCount;
   } finally {
     // Re-enable foreign key checks
     db.pragma('foreign_keys = ON');
@@ -425,6 +452,7 @@ export function createScan(campaignId: string): Scan {
   const id = uuidv4();
   insertScanStmt.run({ id, campaign_id: campaignId });
 
+
   return getScan(id)!;
 }
 
@@ -441,6 +469,8 @@ export function updateScanStatus(id: string, status: Scan['status'], summary?: S
     status,
     summary: summary ? JSON.stringify(summary) : null,
   });
+
+
   return getScan(id);
 }
 
@@ -510,6 +540,7 @@ export interface InsertScanResultInput {
 
 export function insertScanResult(data: InsertScanResultInput): ScanResult {
   const id = uuidv4();
+  const detailsJson = JSON.stringify(data.details ?? {});
   insertScanResultStmt.run({
     id,
     scan_id: data.scanId,
@@ -518,8 +549,9 @@ export function insertScanResult(data: InsertScanResultInput): ScanResult {
     category: data.category,
     score: data.score,
     issues_count: data.issuesCount,
-    details: JSON.stringify(data.details ?? {}),
+    details: detailsJson,
   });
+
 
   return {
     id,
@@ -552,6 +584,18 @@ export interface InsertScanIssueInput {
 
 export function insertScanIssues(issues: InsertScanIssueInput[]): ScanIssue[] {
   const inserted: ScanIssue[] = [];
+  const mirroredIssues: Array<{
+    id: string;
+    resultId: string;
+    severity: ScanIssue['severity'];
+    wcagCriterion: string;
+    wcagLevel: ScanIssue['wcagLevel'];
+    description: string;
+    element: string;
+    helpUrl: string;
+    failureSummary: string | null;
+    relatedNodes: string[] | null;
+  }> = [];
 
   const txn = db.transaction(() => {
     for (const issue of issues) {
@@ -568,6 +612,18 @@ export function insertScanIssues(issues: InsertScanIssueInput[]): ScanIssue[] {
         failure_summary: issue.failureSummary ?? null,
         related_nodes: issue.relatedNodes ? JSON.stringify(issue.relatedNodes) : null,
       });
+      mirroredIssues.push({
+        id,
+        resultId: issue.resultId,
+        severity: issue.severity,
+        wcagCriterion: issue.wcagCriterion,
+        wcagLevel: issue.wcagLevel,
+        description: issue.description,
+        element: issue.element ?? '',
+        helpUrl: issue.helpUrl ?? '',
+        failureSummary: issue.failureSummary ?? null,
+        relatedNodes: issue.relatedNodes ?? null,
+      });
       inserted.push({
         id,
         resultId: issue.resultId,
@@ -582,6 +638,10 @@ export function insertScanIssues(issues: InsertScanIssueInput[]): ScanIssue[] {
   });
 
   txn();
+
+  if (inserted.length > 0) {
+  }
+
   return inserted;
 }
 
@@ -805,6 +865,7 @@ export interface InsertAuditLogInput {
 
 export function insertAuditLogEntry(data: InsertAuditLogInput): ScanAuditEntry {
   const id = uuidv4();
+  const executedAt = data.executed ? new Date().toISOString() : null;
   insertAuditLogStmt.run({
     id,
     scan_id: data.scanId,
@@ -817,8 +878,9 @@ export function insertAuditLogEntry(data: InsertAuditLogInput): ScanAuditEntry {
     error_message: data.errorMessage ?? null,
     site_id: data.siteId ?? null,
     page_url: data.pageUrl ?? null,
-    executed_at: data.executed ? new Date().toISOString() : null,
+    executed_at: executedAt,
   });
+
 
   return {
     id,
@@ -862,6 +924,7 @@ export function updateAuditLogEntry(
   pageUrl: string,
   update: { executed: boolean; passed: boolean | null; errorMessage?: string | null },
 ): void {
+  const executedAt = update.executed ? new Date().toISOString() : null;
   updateAuditLogStmt.run({
     scan_id: scanId,
     category,
@@ -871,8 +934,9 @@ export function updateAuditLogEntry(
     executed: update.executed ? 1 : 0,
     passed: update.passed === null ? null : update.passed ? 1 : 0,
     error_message: update.errorMessage ?? null,
-    executed_at: update.executed ? new Date().toISOString() : null,
+    executed_at: executedAt,
   });
+
 }
 
 const getAuditLogStmt = db.prepare(`

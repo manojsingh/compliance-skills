@@ -4,6 +4,22 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { NotFoundError, ValidationError } from '../middleware/errorHandler.js';
 import { createReport, getReportPath, listReports } from '../services/reporter/index.js';
 import { getScan, listScans } from '../db/queries.js';
+import PostgresDatabase from '../db/postgres.js';
+import * as pgQueries from '../db/queries-postgres.js';
+
+// Detect PostgreSQL primary mode
+const USE_POSTGRES_PRIMARY = Boolean(process.env.PGHOST || process.env.DATABASE_URL);
+const pgDb = USE_POSTGRES_PRIMARY
+  ? new PostgresDatabase({
+      host: process.env.PGHOST || 'localhost',
+      port: parseInt(process.env.PGPORT || '5432', 10),
+      database: process.env.PGDATABASE || 'compliancedb',
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      ssl: process.env.PGSSLMODE === 'require',
+      useAzureAuth: process.env.AZURE_POSTGRESQL_PASSWORDLESS === 'true',
+    })
+  : null;
 
 const router = Router();
 
@@ -19,7 +35,13 @@ router.post(
       throw new ValidationError('scanId is required');
     }
 
-    const scan = getScan(scanId);
+    let scan;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      scan = await pgQueries.getScanPostgres(pgDb, scanId);
+    } else {
+      scan = getScan(scanId);
+    }
+    
     if (!scan) throw new NotFoundError('Scan');
     if (scan.status !== 'completed') {
       throw new ValidationError('Scan must be completed before generating a report');
@@ -51,18 +73,34 @@ router.get(
     if (scanId) {
       scanIds = [scanId];
     } else if (campaignId) {
-      const scans = listScans(campaignId);
+      let scans;
+      if (USE_POSTGRES_PRIMARY && pgDb) {
+        scans = await pgQueries.listScansPostgres(pgDb, campaignId);
+      } else {
+        scans = listScans(campaignId);
+      }
       scanIds = scans.map((s) => s.id);
     } else {
       // All scans
-      const scans = listScans();
+      let scans;
+      if (USE_POSTGRES_PRIMARY && pgDb) {
+        scans = await pgQueries.listScansPostgres(pgDb);
+      } else {
+        scans = listScans();
+      }
       scanIds = scans.map((s) => s.id);
     }
 
     const allReports = (
       await Promise.all(
         scanIds.map(async (sid) => {
-          const scan = getScan(sid);
+          let scan;
+          if (USE_POSTGRES_PRIMARY && pgDb) {
+            scan = await pgQueries.getScanPostgres(pgDb, sid);
+          } else {
+            scan = getScan(sid);
+          }
+          
           const rpts = await listReports(sid);
           return rpts.map((r) => ({
             ...r,

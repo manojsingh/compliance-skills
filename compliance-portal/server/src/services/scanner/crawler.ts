@@ -94,6 +94,10 @@ export async function crawlSite(
 
   while (queue.length > 0 && discoveredPages.length < effectiveMaxPages) {
     const current = queue.shift()!;
+    
+    // Check limit again after shift to avoid processing extra pages
+    if (discoveredPages.length >= effectiveMaxPages) break;
+    
     discoveredPages.push(current.url);
 
     // Don't crawl deeper if we've reached the max depth
@@ -108,7 +112,7 @@ export async function crawlSite(
         timeout: PAGE_TIMEOUT,
       });
       // Brief settle time for JS-rendered content / redirects to finalise
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(100);
       loaded = true;
     } catch {
       // domcontentloaded timed out — try with networkidle as a last resort
@@ -148,6 +152,7 @@ export async function crawlSite(
 
       const newLinks: string[] = [];
       for (const link of links) {
+        // Stop adding links if we've reached or will exceed the page limit
         if (discoveredPages.length + queue.length >= effectiveMaxPages) break;
 
         const norm = normalizeUrl(link);
@@ -162,6 +167,8 @@ export async function crawlSite(
 
       newLinks.sort();
       for (const norm of newLinks) {
+        // Final check before adding to queue to ensure we don't exceed limit
+        if (discoveredPages.length + queue.length >= effectiveMaxPages) break;
         queue.push({ url: norm, depth: current.depth + 1 });
       }
     } catch {

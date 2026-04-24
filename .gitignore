@@ -15,6 +15,7 @@ compliance-portal/shared/dist/
 compliance-portal/client/tsconfig.tsbuildinfo
 
 # ── SQLite database files (runtime data, not source) ─────────────────────────
+compliance-portal/data/*.db
 compliance-portal/data/*.db-shm
 compliance-portal/data/*.db-wal
 

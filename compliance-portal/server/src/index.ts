@@ -18,7 +18,7 @@ async function ensurePlaywrightBrowsers() {
       const hasChromium = files.some(f => f.startsWith('chromium'));
       
       if (hasChromium) {
-        console.log('✓ Playwright browsers already installed');
+        console.log('[OK] Playwright browsers already installed');
         return;
       }
     }
@@ -32,7 +32,7 @@ async function ensurePlaywrightBrowsers() {
       env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browserPath }
     });
     
-    console.log('✓ Playwright browsers installed successfully');
+    console.log('[OK] Playwright browsers installed successfully');
   } catch (error) {
     console.error('Warning: Failed to install Playwright browsers:', error);
     console.error('Scans may not work properly');
@@ -44,10 +44,7 @@ async function ensurePlaywrightBrowsers() {
 await ensurePlaywrightBrowsers();
 
 // Initialize database schema before starting the server
-await initializeDatabase().catch((err) => {
-  console.error('Failed to initialize database:', err);
-  process.exit(1);
-});
+await initializeDatabase();
 
 const PORT = process.env.PORT || 3001;
 

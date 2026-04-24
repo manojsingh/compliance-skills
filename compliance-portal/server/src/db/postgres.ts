@@ -76,7 +76,7 @@ class PostgresDatabase {
       console.log(`Auth Method: ${this.useAzureAuth ? 'Azure AD' : 'password'}`);
       
       const client = await this.pool.connect();
-      console.log('✅ PostgreSQL connected successfully');
+      console.log('[OK] PostgreSQL connected successfully');
       
       // Test a simple query
       const result = await client.query('SELECT version()');
@@ -84,7 +84,7 @@ class PostgresDatabase {
       
       client.release();
     } catch (err) {
-      console.error('❌ PostgreSQL connection error:', {
+      console.error('[ERROR] PostgreSQL connection error:', {
         message: err instanceof Error ? err.message : String(err),
         code: (err as any)?.code,
         host: this.config.host,

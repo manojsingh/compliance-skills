@@ -17,6 +17,22 @@ import { scheduler } from '../services/scheduler/index.js';
 import { isValidCron } from '../services/scheduler/cron-helpers.js';
 import type { UpdateCampaignInput } from '../db/queries.js';
 import { executeScan } from '../services/scanner/index.js';
+import PostgresDatabase from '../db/postgres.js';
+import * as pgQueries from '../db/queries-postgres.js';
+
+// Detect PostgreSQL primary mode
+const USE_POSTGRES_PRIMARY = Boolean(process.env.PGHOST || process.env.DATABASE_URL);
+const pgDb = USE_POSTGRES_PRIMARY
+  ? new PostgresDatabase({
+      host: process.env.PGHOST || 'localhost',
+      port: parseInt(process.env.PGPORT || '5432', 10),
+      database: process.env.PGDATABASE || 'compliancedb',
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      ssl: process.env.PGSSLMODE === 'require',
+      useAzureAuth: process.env.AZURE_POSTGRESQL_PASSWORDLESS === 'true',
+    })
+  : null;
 
 const router = Router();
 
@@ -24,8 +40,13 @@ const router = Router();
 router.get(
   '/',
   asyncHandler(async (_req, res) => {
-    const campaigns = listCampaigns();
-    res.json(campaigns);
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      const campaigns = await pgQueries.listCampaignsPostgres(pgDb);
+      res.json(campaigns);
+    } else {
+      const campaigns = listCampaigns();
+      res.json(campaigns);
+    }
   }),
 );
 
@@ -34,7 +55,13 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const data = validateCampaignCreate(req.body);
-    const campaign = createCampaign(data);
+    
+    let campaign;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      campaign = await pgQueries.createCampaignPostgres(pgDb, data);
+    } else {
+      campaign = createCampaign(data);
+    }
 
     // Register cron schedule if provided and valid
     if (campaign.scheduleCron && isValidCron(campaign.scheduleCron)) {
@@ -50,10 +77,23 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const id = req.params.id as string;
-    const campaign = getCampaign(id);
+    
+    let campaign;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      campaign = await pgQueries.getCampaignPostgres(pgDb, id);
+    } else {
+      campaign = getCampaign(id);
+    }
+    
     if (!campaign) throw new NotFoundError('Campaign');
 
-    const latestScan = getLatestScan(id);
+    let latestScan;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      latestScan = await pgQueries.getLatestScanPostgres(pgDb, id);
+    } else {
+      latestScan = getLatestScan(id);
+    }
+    
     res.json({ ...campaign, latestScan });
   }),
 );
@@ -63,11 +103,25 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const id = req.params.id as string;
-    const existing = getCampaign(id);
+    
+    let existing;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      existing = await pgQueries.getCampaignPostgres(pgDb, id);
+    } else {
+      existing = getCampaign(id);
+    }
+    
     if (!existing) throw new NotFoundError('Campaign');
 
     const data = validateCampaignUpdate(req.body);
-    const updated = updateCampaign(id, data as UpdateCampaignInput);
+    
+    let updated;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      updated = await pgQueries.updateCampaignPostgres(pgDb, id, data as pgQueries.UpdateCampaignInput);
+    } else {
+      updated = updateCampaign(id, data as UpdateCampaignInput);
+    }
+    
     const newStatus = (data as UpdateCampaignInput).status;
     const newCron = (data as UpdateCampaignInput).scheduleCron;
 
@@ -106,7 +160,16 @@ router.delete(
       scheduler.unschedule(id);
     }
 
-    const deleted = deleteCampaigns(ids);
+    let deleted = 0;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      for (const id of ids) {
+        await pgQueries.deleteCampaignPostgres(pgDb, id);
+        deleted++;
+      }
+    } else {
+      deleted = deleteCampaigns(ids);
+    }
+    
     res.json({ deleted });
   }),
 );
@@ -117,7 +180,14 @@ router.delete(
   asyncHandler(async (req, res) => {
     const id = req.params.id as string;
     scheduler.unschedule(id);
-    const existed = deleteCampaign(id);
+    
+    let existed;
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      existed = await pgQueries.deleteCampaignPostgres(pgDb, id);
+    } else {
+      existed = deleteCampaign(id);
+    }
+    
     if (!existed) throw new NotFoundError('Campaign');
     res.status(204).send();
   }),

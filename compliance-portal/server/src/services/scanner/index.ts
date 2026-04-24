@@ -3,15 +3,28 @@ import {
   updateScanStatus,
   insertScanResult,
   insertScanIssues,
-  getCampaign,
   insertAuditLogBatch,
-  updateAuditLogEntry,
 } from '../../db/queries.js';
 import type { InsertAuditLogInput } from '../../db/queries.js';
-import type { AuditCategory, ScanSummary, ComplianceLevel } from '@compliance-portal/shared';
+import type { AuditCategory, ScanSummary, ComplianceLevel, Scan, ScanIssue, ScanResult } from '@compliance-portal/shared';
+import PostgresDatabase from '../../db/postgres.js';
+import * as pgQueries from '../../db/queries-postgres.js';
 import { getCriteriaForLevel } from '../../data/wcag-helpers.js';
 import { crawlSite } from './crawler.js';
 import { auditAccessibility } from './accessibility.js';
+
+const USE_POSTGRES_PRIMARY = Boolean(process.env.PGHOST || process.env.DATABASE_URL);
+const pgDb = USE_POSTGRES_PRIMARY
+  ? new PostgresDatabase({
+      host: process.env.PGHOST || 'localhost',
+      port: parseInt(process.env.PGPORT || '5432', 10),
+      database: process.env.PGDATABASE || 'compliancedb',
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      ssl: process.env.PGSSLMODE === 'require',
+      useAzureAuth: process.env.AZURE_POSTGRESQL_PASSWORDLESS === 'true',
+    })
+  : null;
 
 async function runWithConcurrency<T>(
   items: T[],
@@ -70,13 +83,13 @@ function optimizeConcurrencyForEnvironment(config: ScanConfig): ScanConfig {
   return config;
 }
 
-function insertExpectedRules(
+async function insertExpectedRules(
   scanId: string,
   siteId: string,
   pageUrl: string,
   categories: AuditCategory[],
   complianceLevel: ComplianceLevel,
-): void {
+): Promise<void> {
   const entries: InsertAuditLogInput[] = [];
 
   if (categories.includes('accessibility')) {
@@ -97,8 +110,52 @@ function insertExpectedRules(
   }
 
   if (entries.length > 0) {
-    insertAuditLogBatch(entries);
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      await pgQueries.insertAuditLogBatchPostgres(pgDb, entries);
+    } else {
+      insertAuditLogBatch(entries);
+    }
   }
+}
+
+async function setScanStatus(scanId: string, status: Scan['status'], summary?: ScanSummary): Promise<void> {
+  if (USE_POSTGRES_PRIMARY && pgDb) {
+    await pgQueries.updateScanStatusPostgres(pgDb, scanId, status, summary);
+    return;
+  }
+  updateScanStatus(scanId, status, summary);
+}
+
+async function addScanResult(data: {
+  scanId: string;
+  siteId: string;
+  pageUrl: string;
+  category: AuditCategory;
+  score: number;
+  issuesCount: number;
+  details?: unknown;
+}): Promise<ScanResult> {
+  if (USE_POSTGRES_PRIMARY && pgDb) {
+    return pgQueries.insertScanResultPostgres(pgDb, data);
+  }
+  return insertScanResult(data);
+}
+
+async function addScanIssues(issues: Array<{
+  resultId: string;
+  severity: ScanIssue['severity'];
+  wcagCriterion: string;
+  wcagLevel: ScanIssue['wcagLevel'];
+  description: string;
+  element?: string;
+  helpUrl?: string;
+  failureSummary?: string;
+  relatedNodes?: string[];
+}>): Promise<ScanIssue[]> {
+  if (USE_POSTGRES_PRIMARY && pgDb) {
+    return pgQueries.insertScanIssuesPostgres(pgDb, issues);
+  }
+  return insertScanIssues(issues);
 }
 
 interface SiteResult {
@@ -123,7 +180,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
   let browser: Browser | undefined;
 
   try {
-    updateScanStatus(config.scanId, 'running');
+    await setScanStatus(config.scanId, 'running');
     
     // Optimize concurrency for Azure containerized environment
     config = optimizeConcurrencyForEnvironment(config);
@@ -223,7 +280,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
             if (navSuccess) pagesAudited++;
 
             // Pre-insert expected audit log entries
-            insertExpectedRules(config.scanId, site.id, pageUrl, config.categories, config.complianceLevel);
+            await insertExpectedRules(config.scanId, site.id, pageUrl, config.categories, config.complianceLevel);
 
             // Accessibility audit
             if (config.categories.includes('accessibility')) {
@@ -231,7 +288,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
                 const a11yResult = await auditAccessibility(auditPage, config.complianceLevel);
                 result.accessibilityScores.push(a11yResult.score);
 
-                const scanResult = insertScanResult({
+                const scanResult = await addScanResult({
                   scanId: config.scanId,
                   siteId: site.id,
                   pageUrl,
@@ -245,7 +302,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
                 });
 
                 if (a11yResult.issues.length > 0) {
-                  const dbIssues = insertScanIssues(
+                  const dbIssues = await addScanIssues(
                     a11yResult.issues.map((issue) => ({
                       resultId: scanResult.id,
                       severity: issue.severity,
@@ -309,7 +366,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
           console.warn(`[Scanner] ${errMsg}: ${site.url}`);
           result.error = errMsg;
           if (config.categories.includes('accessibility')) {
-            insertScanResult({
+            await addScanResult({
               scanId: config.scanId,
               siteId: site.id,
               pageUrl: site.url,
@@ -326,7 +383,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
         result.error = errMsg;
         // Store a 0-score result so the site appears in the UI with an error
         if (config.categories.includes('accessibility')) {
-          insertScanResult({
+          await addScanResult({
             scanId: config.scanId,
             siteId: site.id,
             pageUrl: site.url,
@@ -378,11 +435,11 @@ export async function executeScan(config: ScanConfig): Promise<void> {
       },
     };
 
-    updateScanStatus(config.scanId, 'completed', summary);
+    await setScanStatus(config.scanId, 'completed', summary);
     console.log(`Scan ${config.scanId} completed: ${totalPages} pages, ${totalIssues} issues`);
   } catch (err) {
     console.error(`Scan ${config.scanId} failed:`, err);
-    updateScanStatus(config.scanId, 'failed');
+    await setScanStatus(config.scanId, 'failed');
   } finally {
     if (browser) {
       await browser.close().catch(() => {});

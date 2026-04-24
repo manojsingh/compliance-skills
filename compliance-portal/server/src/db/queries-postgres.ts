@@ -273,6 +273,171 @@ export async function createScanPostgres(db: PostgresDatabase, campaignId: strin
   };
 }
 
+export interface InsertScanResultPostgresInput {
+  scanId: string;
+  siteId: string;
+  pageUrl: string;
+  category: AuditCategory;
+  score: number;
+  issuesCount: number;
+  details?: unknown;
+}
+
+export interface InsertScanIssuePostgresInput {
+  resultId: string;
+  severity: ScanIssue['severity'];
+  wcagCriterion: string;
+  wcagLevel: ScanIssue['wcagLevel'];
+  description: string;
+  element?: string;
+  helpUrl?: string;
+  failureSummary?: string;
+  relatedNodes?: string[];
+}
+
+export interface InsertAuditLogPostgresInput {
+  scanId: string;
+  category: AuditCategory;
+  ruleId: string;
+  ruleName: string;
+  expected?: boolean;
+  executed?: boolean;
+  passed?: boolean | null;
+  errorMessage?: string | null;
+  siteId?: string | null;
+  pageUrl?: string | null;
+}
+
+export async function updateScanStatusPostgres(
+  db: PostgresDatabase,
+  id: string,
+  status: Scan['status'],
+  summary?: ScanSummary,
+): Promise<Scan | null> {
+  await db.query(
+    `UPDATE scans
+       SET status = $2,
+           summary = $3,
+           started_at = CASE WHEN $2 = 'running' AND started_at IS NULL THEN NOW() ELSE started_at END,
+           completed_at = CASE WHEN $2 IN ('completed','failed') THEN NOW() ELSE completed_at END
+     WHERE id = $1`,
+    [id, status, summary ? JSON.stringify(summary) : null],
+  );
+
+  return getScanPostgres(db, id);
+}
+
+export async function insertScanResultPostgres(
+  db: PostgresDatabase,
+  data: InsertScanResultPostgresInput,
+): Promise<ScanResult> {
+  const id = uuidv4();
+  const details = data.details ?? {};
+
+  await db.query(
+    `INSERT INTO scan_results (id, scan_id, site_id, page_url, category, score, issues_count, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      id,
+      data.scanId,
+      data.siteId,
+      data.pageUrl,
+      data.category,
+      data.score,
+      data.issuesCount,
+      JSON.stringify(details),
+    ],
+  );
+
+  return {
+    id,
+    scanId: data.scanId,
+    siteId: data.siteId,
+    pageUrl: data.pageUrl,
+    category: data.category,
+    score: data.score,
+    issuesCount: data.issuesCount,
+    details,
+  };
+}
+
+export async function insertScanIssuesPostgres(
+  db: PostgresDatabase,
+  issues: InsertScanIssuePostgresInput[],
+): Promise<ScanIssue[]> {
+  const inserted: ScanIssue[] = [];
+
+  await db.transaction(async (client) => {
+    for (const issue of issues) {
+      const id = uuidv4();
+      await client.query(
+        `INSERT INTO scan_issues (
+          id, result_id, severity, wcag_criterion, wcag_level, description, element, help_url, failure_summary, related_nodes
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          id,
+          issue.resultId,
+          issue.severity,
+          issue.wcagCriterion,
+          issue.wcagLevel,
+          issue.description,
+          issue.element ?? '',
+          issue.helpUrl ?? '',
+          issue.failureSummary ?? null,
+          issue.relatedNodes ? JSON.stringify(issue.relatedNodes) : null,
+        ],
+      );
+
+      inserted.push({
+        id,
+        resultId: issue.resultId,
+        severity: issue.severity,
+        wcagCriterion: issue.wcagCriterion,
+        wcagLevel: issue.wcagLevel,
+        description: issue.description,
+        element: issue.element ?? '',
+        helpUrl: issue.helpUrl ?? '',
+      });
+    }
+  });
+
+  return inserted;
+}
+
+export async function insertAuditLogBatchPostgres(
+  db: PostgresDatabase,
+  entries: InsertAuditLogPostgresInput[],
+): Promise<void> {
+  await db.transaction(async (client) => {
+    for (const entry of entries) {
+      const id = uuidv4();
+      const executed = entry.executed ? 1 : 0;
+      const passed = entry.passed === undefined || entry.passed === null ? null : (entry.passed ? 1 : 0);
+      const executedAt = entry.executed ? new Date().toISOString() : null;
+
+      await client.query(
+        `INSERT INTO scan_audit_log (
+          id, scan_id, category, rule_id, rule_name, expected, executed, passed, error_message, site_id, page_url, executed_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [
+          id,
+          entry.scanId,
+          entry.category,
+          entry.ruleId,
+          entry.ruleName,
+          entry.expected !== false ? 1 : 0,
+          executed,
+          passed,
+          entry.errorMessage ?? null,
+          entry.siteId ?? null,
+          entry.pageUrl ?? null,
+          executedAt,
+        ],
+      );
+    }
+  });
+}
+
 export async function getLatestScanPostgres(db: PostgresDatabase, campaignId: string): Promise<Scan | null> {
   const row = await db.queryOne<any>(
     'SELECT * FROM scans WHERE campaign_id = $1 ORDER BY created_at DESC LIMIT 1',

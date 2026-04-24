@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import app from './app.js';
 import { initializeDatabase } from './db/index-new.js';
 import { scheduler } from './services/scheduler/index.js';

@@ -64,22 +64,9 @@ export async function initializeDatabase(): Promise<void> {
         throw new Error(`Failed to connect to PostgreSQL: ${connErr instanceof Error ? connErr.message : String(connErr)}`);
       }
       
-      // Execute schema
+      // Execute schema in one pass so PL/pgSQL blocks (e.g. $$ ... $$) are preserved.
       const schema = fs.readFileSync(path.join(__dirname, 'schema-postgres.sql'), 'utf-8');
-      const statements = schema.split(';').filter(s => s.trim());
-      
-      for (const statement of statements) {
-        if (statement.trim()) {
-          try {
-            await pgDb.execute(statement);
-          } catch (err) {
-            // Ignore errors for statements that already exist (like tables, indexes)
-            if (err instanceof Error && !err.message.includes('already exists')) {
-              console.warn('Schema statement warning:', err.message);
-            }
-          }
-        }
-      }
+      await pgDb.execute(schema);
       
       // Check if WCAG data needs to be seeded
       const result = await pgDb.queryOne<{ count: string }>('SELECT COUNT(*) as count FROM wcag_criteria');

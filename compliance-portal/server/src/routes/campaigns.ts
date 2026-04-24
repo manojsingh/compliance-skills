@@ -198,10 +198,14 @@ router.post(
   '/:id/scan',
   asyncHandler(async (req, res) => {
     const id = req.params.id as string;
-    const campaign = getCampaign(id);
+    const campaign = USE_POSTGRES_PRIMARY && pgDb
+      ? await pgQueries.getCampaignPostgres(pgDb, id)
+      : getCampaign(id);
     if (!campaign) throw new NotFoundError('Campaign');
 
-    const scan = createScan(id);
+    const scan = USE_POSTGRES_PRIMARY && pgDb
+      ? await pgQueries.createScanPostgres(pgDb, id)
+      : createScan(id);
 
     // Kick off scan in the background — don't await
     executeScan({
@@ -227,10 +231,14 @@ router.get(
   '/:id/scans',
   asyncHandler(async (req, res) => {
     const id = req.params.id as string;
-    const campaign = getCampaign(id);
+    const campaign = USE_POSTGRES_PRIMARY && pgDb
+      ? await pgQueries.getCampaignPostgres(pgDb, id)
+      : getCampaign(id);
     if (!campaign) throw new NotFoundError('Campaign');
 
-    const scans = listScans(id);
+    const scans = USE_POSTGRES_PRIMARY && pgDb
+      ? await pgQueries.listScansPostgres(pgDb, id)
+      : listScans(id);
     res.json(scans);
   }),
 );

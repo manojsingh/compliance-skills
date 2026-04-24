@@ -467,13 +467,16 @@ export async function getDashboardSummaryPostgres(db: PostgresDatabase): Promise
   };
 }
 
-export async function getRecentScansPostgres(db: PostgresDatabase, limit: number): Promise<(Scan & { campaignName: string })[]> {
+export async function getRecentScansPostgres(db: PostgresDatabase, limit: number): Promise<(Scan & { campaignName: string; siteCount: number; liveIssueCount: number })[]> {
   const rows = await db.query<any>(
-    `SELECT s.*, c.name as campaign_name
+    `SELECT s.*, c.name as campaign_name,
+      (SELECT COUNT(*) FROM campaign_sites cs WHERE cs.campaign_id = s.campaign_id) as site_count,
+      (SELECT COUNT(*) FROM scan_issues si
+         JOIN scan_results sr ON sr.id = si.result_id
+         WHERE sr.scan_id = s.id) as live_issue_count
     FROM scans s
     JOIN campaigns c ON s.campaign_id = c.id
-    WHERE s.status = 'completed'
-    ORDER BY s.completed_at DESC
+    ORDER BY s.created_at DESC
     LIMIT $1`,
     [limit]
   );
@@ -486,5 +489,7 @@ export async function getRecentScansPostgres(db: PostgresDatabase, limit: number
     completedAt: row.completed_at,
     summary: row.summary ? JSON.parse(row.summary) as ScanSummary : null,
     campaignName: row.campaign_name,
+    siteCount: row.site_count ?? 0,
+    liveIssueCount: row.live_issue_count ?? 0,
   }));
 }

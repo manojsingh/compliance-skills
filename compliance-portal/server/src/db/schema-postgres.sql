@@ -1,9 +1,6 @@
 -- WCAG Compliance Portal Database Schema (PostgreSQL)
 -- Migration from SQLite to PostgreSQL
 
--- Enable UUID extension for PostgreSQL
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 -- Campaigns table
 CREATE TABLE IF NOT EXISTS campaigns (
   id TEXT PRIMARY KEY,
@@ -163,8 +160,10 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_campaigns_updated_at ON campaigns;
 CREATE TRIGGER update_campaigns_updated_at BEFORE UPDATE ON campaigns
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_wcag_criteria_updated_at ON wcag_criteria;
 CREATE TRIGGER update_wcag_criteria_updated_at BEFORE UPDATE ON wcag_criteria
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

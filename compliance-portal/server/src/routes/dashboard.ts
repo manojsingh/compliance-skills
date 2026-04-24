@@ -1,22 +1,8 @@
 import { Router } from 'express';
 import { getDashboardSummary, getRecentScans } from '../db/queries.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import PostgresDatabase from '../db/postgres.js';
 import * as pgQueries from '../db/queries-postgres.js';
-
-// Detect PostgreSQL primary mode
-const USE_POSTGRES_PRIMARY = Boolean(process.env.PGHOST || process.env.DATABASE_URL);
-const pgDb = USE_POSTGRES_PRIMARY
-  ? new PostgresDatabase({
-      host: process.env.PGHOST || 'localhost',
-      port: parseInt(process.env.PGPORT || '5432', 10),
-      database: process.env.PGDATABASE || 'compliancedb',
-      user: process.env.PGUSER,
-      password: process.env.PGPASSWORD,
-      ssl: process.env.PGSSLMODE === 'require',
-      useAzureAuth: process.env.AZURE_POSTGRESQL_PASSWORDLESS === 'true',
-    })
-  : null;
+import { sharedPgDb as pgDb, USE_POSTGRES as USE_POSTGRES_PRIMARY } from '../db/shared.js';
 
 const router = Router();
 

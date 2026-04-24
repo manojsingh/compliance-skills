@@ -94,6 +94,39 @@ export async function initializeDatabase(): Promise<void> {
   }
 }
 
+export async function recoverInterruptedScans(): Promise<number> {
+  try {
+    if (DB_TYPE === 'postgres') {
+      const pgDb = db as PostgresDatabase;
+      const result = await pgDb.queryOne<{ count: string }>(
+        `WITH recovered AS (
+           UPDATE scans
+              SET status = 'failed',
+                  completed_at = NOW()
+            WHERE status IN ('pending', 'running')
+          RETURNING id
+         )
+         SELECT COUNT(*)::text AS count FROM recovered`,
+      );
+
+      return result ? parseInt(result.count, 10) : 0;
+    }
+
+    const sqliteDb = db as SqliteDatabase;
+    const result = sqliteDb.prepare(
+      `UPDATE scans
+          SET status = 'failed',
+              completed_at = datetime('now')
+        WHERE status IN ('pending', 'running')`,
+    ).run();
+
+    return result.changes;
+  } catch (error) {
+    console.error('Failed to recover interrupted scans:', error);
+    throw error;
+  }
+}
+
 async function seedWcagDataPostgres(pgDb: PostgresDatabase): Promise<void> {
   console.log('Seeding WCAG data for PostgreSQL...');
   // This would use the same seed data but with async queries

@@ -314,17 +314,29 @@ export async function updateScanStatusPostgres(
   status: Scan['status'],
   summary?: ScanSummary,
 ): Promise<Scan | null> {
-  await db.query(
-    `UPDATE scans
-       SET status = $2,
-           summary = $3,
-           started_at = CASE WHEN $2 = 'running' AND started_at IS NULL THEN NOW() ELSE started_at END,
-           completed_at = CASE WHEN $2 IN ('completed','failed') THEN NOW() ELSE completed_at END
-     WHERE id = $1`,
-    [id, status, summary ? JSON.stringify(summary) : null],
-  );
+  try {
+    const result = await db.query(
+      `UPDATE scans
+         SET status = $2,
+             summary = $3,
+             started_at = CASE WHEN $2 = 'running' AND started_at IS NULL THEN NOW() ELSE started_at END,
+             completed_at = CASE WHEN $2 IN ('completed','failed') THEN NOW() ELSE completed_at END
+       WHERE id = $1
+       RETURNING id`,
+      [id, status, summary ? JSON.stringify(summary) : null],
+    );
 
-  return getScanPostgres(db, id);
+    if (result.length === 0) {
+      console.error(`[updateScanStatusPostgres] No scan found with id: ${id}`);
+      return null;
+    }
+
+    console.log(`[updateScanStatusPostgres] Updated scan ${id} - affected ${result.length} row(s)`);
+    return getScanPostgres(db, id);
+  } catch (error) {
+    console.error(`[updateScanStatusPostgres] Database error updating scan ${id}:`, error);
+    throw error;
+  }
 }
 
 export async function insertScanResultPostgres(

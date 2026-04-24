@@ -7,7 +7,8 @@ export interface CrawlResult {
 }
 
 const MAX_PAGES = 50;
-const PAGE_TIMEOUT = 30_000;
+// Shorter timeout on Azure/production — slow pages block the sequential BFS crawl
+const PAGE_TIMEOUT = (process.env.WEBSITES_PORT !== undefined || process.env.NODE_ENV === 'production') ? 15_000 : 30_000;
 
 // File extensions to skip during crawling
 const SKIP_EXTENSIONS = new Set([
@@ -103,7 +104,7 @@ export async function crawlSite(
     // Don't crawl deeper if we've reached the max depth
     if (current.depth >= maxDepth) continue;
 
-    // Navigate to the page — use domcontentloaded for speed; fall back if needed
+    // Navigate to the page — use domcontentloaded for speed
     let response;
     let loaded = false;
     try {
@@ -111,20 +112,9 @@ export async function crawlSite(
         waitUntil: 'domcontentloaded',
         timeout: PAGE_TIMEOUT,
       });
-      // Brief settle time for JS-rendered content / redirects to finalise
-      await page.waitForTimeout(100);
       loaded = true;
     } catch {
-      // domcontentloaded timed out — try with networkidle as a last resort
-      try {
-        response = await page.goto(current.url, {
-          waitUntil: 'networkidle',
-          timeout: PAGE_TIMEOUT,
-        });
-        loaded = true;
-      } catch {
-        // Total failure — skip link extraction for this page
-      }
+      // Navigation failed — skip link extraction for this page
     }
 
     if (!loaded) continue;

@@ -7,24 +7,11 @@ import {
 } from '../../db/queries.js';
 import type { InsertAuditLogInput } from '../../db/queries.js';
 import type { AuditCategory, ScanSummary, ComplianceLevel, Scan, ScanIssue, ScanResult } from '@compliance-portal/shared';
-import PostgresDatabase from '../../db/postgres.js';
 import * as pgQueries from '../../db/queries-postgres.js';
 import { getCriteriaForLevel } from '../../data/wcag-helpers.js';
 import { crawlSite } from './crawler.js';
 import { auditAccessibility } from './accessibility.js';
-
-const USE_POSTGRES_PRIMARY = Boolean(process.env.PGHOST || process.env.DATABASE_URL);
-const pgDb = USE_POSTGRES_PRIMARY
-  ? new PostgresDatabase({
-      host: process.env.PGHOST || 'localhost',
-      port: parseInt(process.env.PGPORT || '5432', 10),
-      database: process.env.PGDATABASE || 'compliancedb',
-      user: process.env.PGUSER,
-      password: process.env.PGPASSWORD,
-      ssl: process.env.PGSSLMODE === 'require',
-      useAzureAuth: process.env.AZURE_POSTGRESQL_PASSWORDLESS === 'true',
-    })
-  : null;
+import { sharedPgDb as pgDb, USE_POSTGRES as USE_POSTGRES_PRIMARY } from '../../db/shared.js';
 
 async function runWithConcurrency<T>(
   items: T[],
@@ -58,7 +45,10 @@ export interface ScanConfig {
   pageConcurrency: number;
 }
 
-const PAGE_TIMEOUT = 30_000;
+// Shorter timeout on Azure/production — avoids blocking 30s per slow page
+const PAGE_TIMEOUT = (process.env.WEBSITES_PORT !== undefined || process.env.NODE_ENV === 'production') ? 15_000 : 30_000;
+// Brief settle so JS frameworks finish rendering before axe runs (audit phase only)
+const AUDIT_SETTLE_MS = 150;
 
 /**
  * Optimize concurrency for limited resources in containerized environments.
@@ -70,12 +60,13 @@ function optimizeConcurrencyForEnvironment(config: ScanConfig): ScanConfig {
   const isProduction = process.env.NODE_ENV === 'production';
   
   if (isAzure && isProduction) {
-    console.log(`[Scanner] Azure environment detected - optimizing concurrency (site: ${config.siteConcurrency}→1, page: ${config.pageConcurrency}→2)`);
-    // In Azure with limited resources, reduce concurrency to avoid CPU thrashing
+    console.log(`[Scanner] Azure environment detected - optimizing concurrency (site: ${config.siteConcurrency}→1, page: ${config.pageConcurrency}→3)`);
+    // In Azure process sites sequentially to avoid memory pressure, but allow
+    // 3 parallel page tabs (IO-bound, so more concurrency helps despite 1 CPU)
     return {
       ...config,
       siteConcurrency: Math.min(config.siteConcurrency, 1), // Process sites sequentially
-      pageConcurrency: Math.min(config.pageConcurrency, 2), // Max 2 pages at once
+      pageConcurrency: Math.min(config.pageConcurrency, 3), // Max 3 pages at once
     };
   }
   
@@ -119,11 +110,23 @@ async function insertExpectedRules(
 }
 
 async function setScanStatus(scanId: string, status: Scan['status'], summary?: ScanSummary): Promise<void> {
-  if (USE_POSTGRES_PRIMARY && pgDb) {
-    await pgQueries.updateScanStatusPostgres(pgDb, scanId, status, summary);
-    return;
+  try {
+    if (USE_POSTGRES_PRIMARY && pgDb) {
+      console.log(`[setScanStatus] Updating scan ${scanId} to status: ${status}`);
+      const result = await pgQueries.updateScanStatusPostgres(pgDb, scanId, status, summary);
+      if (result) {
+        console.log(`[setScanStatus] SUCCESS - Scan ${scanId} updated to ${status} (DB confirmed status: ${result.status})`);
+      } else {
+        console.error(`[setScanStatus] WARNING - updateScanStatusPostgres returned null for scan ${scanId}`);
+      }
+      return;
+    }
+    updateScanStatus(scanId, status, summary);
+    console.log(`[setScanStatus] Scan ${scanId} updated to ${status} (SQLite)`);
+  } catch (error) {
+    console.error(`[setScanStatus] FAILED to update scan ${scanId} to ${status}:`, error);
+    throw error;
   }
-  updateScanStatus(scanId, status, summary);
 }
 
 async function addScanResult(data: {
@@ -268,8 +271,8 @@ export async function executeScan(config: ScanConfig): Promise<void> {
                 waitUntil: 'domcontentloaded',
                 timeout: PAGE_TIMEOUT,
               });
-              // Brief settle time for JS-rendered content (optimized for speed)
-              await auditPage.waitForTimeout(100);
+              // Let JS frameworks finish rendering before axe runs
+              await auditPage.waitForTimeout(AUDIT_SETTLE_MS);
               navSuccess = true;
             } catch {
               // Skip this page if navigation fails entirely
@@ -279,8 +282,10 @@ export async function executeScan(config: ScanConfig): Promise<void> {
 
             if (navSuccess) pagesAudited++;
 
-            // Pre-insert expected audit log entries
-            await insertExpectedRules(config.scanId, site.id, pageUrl, config.categories, config.complianceLevel);
+            // Pre-insert expected audit log entries (fire-and-forget — don't block the audit)
+            insertExpectedRules(config.scanId, site.id, pageUrl, config.categories, config.complianceLevel).catch(
+              (err) => console.warn(`[Scanner] insertExpectedRules failed for ${pageUrl}:`, err),
+            );
 
             // Accessibility audit
             if (config.categories.includes('accessibility')) {

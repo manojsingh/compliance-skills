@@ -2,30 +2,14 @@ import cron from 'node-cron';
 import { createScan, getLatestScan, getCampaign } from '../../db/queries.js';
 import * as pgQueries from '../../db/queries-postgres.js';
 import db from '../../db/index.js';
-import PostgresDatabase from '../../db/postgres.js';
+import { sharedPgDb as pgDb, USE_POSTGRES as USE_POSTGRES_PRIMARY } from '../../db/shared.js';
 import { isValidCron, describeCron, getNextRuns } from './cron-helpers.js';
 
 // ---------------------------------------------------------------------------
 // PostgreSQL Detection
 // ---------------------------------------------------------------------------
 
-const USE_POSTGRES_PRIMARY = Boolean(process.env.PGHOST || process.env.DATABASE_URL);
-let pgDb: PostgresDatabase | null = null;
-
-async function getPgDb(): Promise<PostgresDatabase | null> {
-  if (!USE_POSTGRES_PRIMARY) return null;
-  if (!pgDb) {
-    const config = {
-      host: process.env.PGHOST || 'localhost',
-      port: parseInt(process.env.PGPORT || '5432'),
-      database: process.env.PGDATABASE || 'compliancedb',
-      user: process.env.PGUSER,
-      password: process.env.PGPASSWORD,
-      ssl: process.env.PGSSLMODE === 'require',
-      useAzureAuth: process.env.AZURE_POSTGRESQL_PASSWORDLESS === 'true',
-    };
-    pgDb = new PostgresDatabase(config);
-  }
+async function getPgDb() {
   return pgDb;
 }
 

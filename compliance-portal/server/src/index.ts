@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import app from './app.js';
-import { initializeDatabase } from './db/index-new.js';
+import { initializeDatabase, recoverInterruptedScans } from './db/index-new.js';
 import { scheduler } from './services/scheduler/index.js';
 import { execSync } from 'child_process';
 import fs from 'fs';
@@ -46,6 +46,11 @@ await ensurePlaywrightBrowsers();
 
 // Initialize database schema before starting the server
 await initializeDatabase();
+
+const recoveredScanCount = await recoverInterruptedScans();
+if (recoveredScanCount > 0) {
+  console.warn(`[Scanner] Marked ${recoveredScanCount} interrupted scan(s) as failed after startup recovery`);
+}
 
 const PORT = process.env.PORT || 3001;
 

@@ -10,7 +10,69 @@ POSTGRES_ADMIN_USER="pgadmin"
 POSTGRES_ADMIN_PASSWORD="P@ssw0rd123!"
 IMAGE_TAG="latest"
 
+# Service Principal Configuration (optional - fallback for token expiry)
+# Set these as environment variables or pass as parameters:
+# AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
+USE_SERVICE_PRINCIPAL="${USE_SERVICE_PRINCIPAL:-false}"
+
 echo "🚀 Starting containerized deployment to Azure..."
+echo ""
+
+# Step 0: Authentication Check and Service Principal Setup
+echo "🔐 Step 0: Verifying Azure authentication..."
+
+# Check if service principal credentials are available
+SP_AVAILABLE=false
+if [[ -n "${AZURE_CLIENT_ID}" ]] && [[ -n "${AZURE_CLIENT_SECRET}" ]] && [[ -n "${AZURE_TENANT_ID}" ]]; then
+  SP_AVAILABLE=true
+  echo "🔑 Service Principal credentials detected"
+  echo "   Will use for ACR authentication to prevent token expiry during push"
+  
+  # Try to login with service principal for general Azure operations
+  # Note: May fail due to Conditional Access policies, but that's okay
+  if [[ "${USE_SERVICE_PRINCIPAL}" == "true" ]]; then
+    echo "   Attempting service principal login..."
+    if az login --service-principal \
+      --username "${AZURE_CLIENT_ID}" \
+      --password "${AZURE_CLIENT_SECRET}" \
+      --tenant "${AZURE_TENANT_ID}" \
+      --output none 2>/dev/null; then
+      echo "✓ Authenticated with Service Principal"
+      echo "   (no token expiry issues for deployment)"
+    else
+      echo "⚠️  Service Principal login failed (likely Conditional Access policy)"
+      echo "   Will use your user account for Azure operations"
+      echo "   Service Principal will still be used for ACR authentication"
+      SP_AVAILABLE=true  # Keep this true for ACR usage
+    fi
+  fi
+fi
+
+# Ensure user is logged in if service principal login didn't work
+if ! az account show &>/dev/null; then
+  echo "❌ Error: Not logged into Azure CLI."
+  echo "   Please run 'az login' first"
+  exit 1
+fi
+
+# Get current authentication info
+AUTH_TYPE=$(az account show --query user.type -o tsv)
+AUTH_USER=$(az account show --query user.name -o tsv)
+
+if [[ "${AUTH_TYPE}" == "servicePrincipal" ]]; then
+  echo "✓ Using Service Principal for all operations"
+elif [[ "${SP_AVAILABLE}" == "true" ]]; then
+  echo "✓ Using user account (${AUTH_USER}) for Azure operations"
+  echo "✓ Will use Service Principal for ACR authentication only"
+else
+  echo "✓ Using user account (${AUTH_USER})"
+  echo "⚠️  For long deployments, set service principal credentials to avoid token expiry:"
+  echo "   source infra/.env.sp (if you have one)"
+fi
+
+# Display current subscription
+SUBSCRIPTION_NAME=$(az account show --query name -o tsv)
+echo "📋 Active subscription: ${SUBSCRIPTION_NAME}"
 echo ""
 
 # Step 1: Ensure resource group exists
@@ -65,8 +127,23 @@ echo ""
 
 # Step 4: Login to Azure Container Registry
 echo "🔐 Step 4: Logging into Azure Container Registry..."
-az acr login --name ${ACR_NAME}
-echo "✓ Logged into ACR"
+
+# Use service principal for ACR login if credentials are available
+# This is critical to prevent token expiry during the long docker push operation
+if [[ "${SP_AVAILABLE}" == "true" ]]; then
+  echo "   Using service principal for ACR authentication (prevents token expiry)..."
+  if az acr login --name ${ACR_NAME} --username "${AZURE_CLIENT_ID}" --password "${AZURE_CLIENT_SECRET}" 2>&1; then
+    echo "✓ Logged into ACR with service principal"
+  else
+    echo "⚠️  Service principal ACR login failed, trying user authentication..."
+    az acr login --name ${ACR_NAME}
+  fi
+else
+  echo "   Using user authentication for ACR..."
+  az acr login --name ${ACR_NAME}
+  echo "   Note: Long docker push may fail if authentication token expires"
+fi
+
 echo ""
 
 # Step 5: Tag and push image to ACR

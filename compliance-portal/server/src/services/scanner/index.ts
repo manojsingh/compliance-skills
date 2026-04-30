@@ -12,6 +12,9 @@ import { getCriteriaForLevel } from '../../data/wcag-helpers.js';
 import { crawlSite } from './crawler.js';
 import { auditAccessibility } from './accessibility.js';
 import { sharedPgDb as pgDb, USE_POSTGRES as USE_POSTGRES_PRIMARY } from '../../db/shared.js';
+import { invalidatePattern } from '../../utils/cache.js';
+import { logger } from '../../utils/logger.js';
+import { perfMonitor } from '../../utils/performance.js';
 
 async function runWithConcurrency<T>(
   items: T[],
@@ -45,10 +48,10 @@ export interface ScanConfig {
   pageConcurrency: number;
 }
 
-// Shorter timeout on Azure/production — avoids blocking 30s per slow page
-const PAGE_TIMEOUT = (process.env.WEBSITES_PORT !== undefined || process.env.NODE_ENV === 'production') ? 15_000 : 30_000;
+// Shorter timeout on Azure/production — avoids blocking per slow page
+const PAGE_TIMEOUT = (process.env.WEBSITES_PORT !== undefined || process.env.NODE_ENV === 'production') ? 10_000 : 30_000;
 // Brief settle so JS frameworks finish rendering before axe runs (audit phase only)
-const AUDIT_SETTLE_MS = 150;
+const AUDIT_SETTLE_MS = 50;
 
 /**
  * Optimize concurrency for limited resources in containerized environments.
@@ -60,13 +63,13 @@ function optimizeConcurrencyForEnvironment(config: ScanConfig): ScanConfig {
   const isProduction = process.env.NODE_ENV === 'production';
   
   if (isAzure && isProduction) {
-    console.log(`[Scanner] Azure environment detected - optimizing concurrency (site: ${config.siteConcurrency}→1, page: ${config.pageConcurrency}→3)`);
+    console.log(`[Scanner] Azure environment detected - optimizing concurrency (site: ${config.siteConcurrency}→1, page: ${config.pageConcurrency}→5)`);
     // In Azure process sites sequentially to avoid memory pressure, but allow
-    // 3 parallel page tabs (IO-bound, so more concurrency helps despite 1 CPU)
+    // 5 parallel page tabs (IO-bound network operations, so more concurrency helps despite 1 CPU)
     return {
       ...config,
       siteConcurrency: Math.min(config.siteConcurrency, 1), // Process sites sequentially
-      pageConcurrency: Math.min(config.pageConcurrency, 3), // Max 3 pages at once
+      pageConcurrency: Math.min(config.pageConcurrency, 5), // Max 5 pages at once
     };
   }
   
@@ -116,6 +119,8 @@ async function setScanStatus(scanId: string, status: Scan['status'], summary?: S
       const result = await pgQueries.updateScanStatusPostgres(pgDb, scanId, status, summary);
       if (result) {
         console.log(`[setScanStatus] SUCCESS - Scan ${scanId} updated to ${status} (DB confirmed status: ${result.status})`);
+        // Invalidate dashboard cache when scan status changes
+        invalidatePattern('dashboard:');
       } else {
         console.error(`[setScanStatus] WARNING - updateScanStatusPostgres returned null for scan ${scanId}`);
       }
@@ -123,6 +128,8 @@ async function setScanStatus(scanId: string, status: Scan['status'], summary?: S
     }
     updateScanStatus(scanId, status, summary);
     console.log(`[setScanStatus] Scan ${scanId} updated to ${status} (SQLite)`);
+    // Invalidate dashboard cache when scan status changes
+    invalidatePattern('dashboard:');
   } catch (error) {
     console.error(`[setScanStatus] FAILED to update scan ${scanId} to ${status}:`, error);
     throw error;
@@ -188,8 +195,8 @@ export async function executeScan(config: ScanConfig): Promise<void> {
     // Optimize concurrency for Azure containerized environment
     config = optimizeConcurrencyForEnvironment(config);
     
-    // Launch browser with performance optimizations for containerized environments
-    const browserStartTime = Date.now();
+    // Launch browser with performance monitoring
+    perfMonitor.start(`scan.${config.scanId}.browser-launch`);
     browser = await chromium.launch({ 
       headless: true,
       args: [
@@ -214,11 +221,16 @@ export async function executeScan(config: ScanConfig): Promise<void> {
         '--no-default-browser-check',
       ],
     });
-    console.log(`[Scanner] Browser launched in ${Date.now() - browserStartTime}ms`);
+    const browserLaunchTime = perfMonitor.end(`scan.${config.scanId}.browser-launch`);
+    logger.scanProgress(config.scanId, 'Browser launched', { duration: browserLaunchTime });
 
     const siteResults: SiteResult[] = [];
 
-    console.log(`[Scanner] Starting scan with siteConcurrency=${config.siteConcurrency}, pageConcurrency=${config.pageConcurrency}`);
+    logger.scanProgress(config.scanId, 'Scan started', { 
+      siteConcurrency: config.siteConcurrency, 
+      pageConcurrency: config.pageConcurrency,
+      sites: config.sites.length,
+    });
 
     await runWithConcurrency(config.sites, config.siteConcurrency, async (site) => {
       const siteStartTime = Date.now();
@@ -266,6 +278,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
           try {
             // Use domcontentloaded as primary — faster and sufficient for axe
             let navSuccess = false;
+            const pageStartTime = Date.now();
             try {
               await auditPage.goto(pageUrl, {
                 waitUntil: 'domcontentloaded',
@@ -274,9 +287,10 @@ export async function executeScan(config: ScanConfig): Promise<void> {
               // Let JS frameworks finish rendering before axe runs
               await auditPage.waitForTimeout(AUDIT_SETTLE_MS);
               navSuccess = true;
-            } catch {
+              console.log(`[Scanner] Page loaded in ${Date.now() - pageStartTime}ms: ${pageUrl}`);
+            } catch (err) {
               // Skip this page if navigation fails entirely
-              console.warn(`[Scanner] Navigation failed for ${pageUrl} — skipping`);
+              console.warn(`[Scanner] Navigation failed after ${Date.now() - pageStartTime}ms for ${pageUrl} — skipping`);
               return;
             }
 

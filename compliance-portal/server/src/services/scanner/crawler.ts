@@ -8,7 +8,7 @@ export interface CrawlResult {
 
 const MAX_PAGES = 50;
 // Shorter timeout on Azure/production — slow pages block the sequential BFS crawl
-const PAGE_TIMEOUT = (process.env.WEBSITES_PORT !== undefined || process.env.NODE_ENV === 'production') ? 15_000 : 30_000;
+const PAGE_TIMEOUT = (process.env.WEBSITES_PORT !== undefined || process.env.NODE_ENV === 'production') ? 10_000 : 30_000;
 
 // File extensions to skip during crawling
 const SKIP_EXTENSIONS = new Set([

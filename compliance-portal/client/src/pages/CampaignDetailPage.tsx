@@ -86,6 +86,28 @@ function formatDateTime(dateStr: string): string {
   });
 }
 
+function formatDuration(startedAt: string | null, completedAt: string | null): string {
+  if (!startedAt || !completedAt) return '—';
+  
+  const start = new Date(startedAt).getTime();
+  const end = new Date(completedAt).getTime();
+  const durationMs = end - start;
+  
+  const seconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  
+  if (hours > 0) {
+    const remainingMinutes = minutes % 60;
+    return `${hours}h ${remainingMinutes}m`;
+  } else if (minutes > 0) {
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
+  } else {
+    return `${seconds}s`;
+  }
+}
+
 export function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -279,8 +301,15 @@ export function CampaignDetailPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Latest Scan Score</CardTitle>
-                  <CardDescription>
-                    {latestScan?.completedAt ? formatDateTime(latestScan.completedAt) : 'Pending'}
+                  <CardDescription className="space-y-1">
+                    <div>
+                      {latestScan?.completedAt ? formatDateTime(latestScan.completedAt) : 'Pending'}
+                    </div>
+                    {latestScan?.startedAt && latestScan?.completedAt && (
+                      <div className="text-xs">
+                        Duration: {formatDuration(latestScan.startedAt, latestScan.completedAt)}
+                      </div>
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

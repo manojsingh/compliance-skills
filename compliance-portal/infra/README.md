@@ -4,8 +4,15 @@ Complete infrastructure and deployment guide for the WCAG Compliance Portal usin
 
 ## 📁 Files
 
+### Deployment & Infrastructure
 - **`main-container.bicep`** - Infrastructure as Code defining all Azure resources
 - **`deploy-container.sh`** - Automated deployment script (creates everything from scratch)
+
+### Authentication Setup
+- **`setup-service-principal.sh`** - Create service principal (standard, 1+ year credentials)
+- **`setup-service-principal-strict.sh`** - Create service principal (strict policies, days-based expiry)
+- **`SERVICE_PRINCIPAL_AUTH.md`** - Complete authentication documentation
+- **`.env.sp.example`** - Template for service principal credentials
 
 ## 🏗️ Infrastructure Components
 
@@ -44,6 +51,9 @@ Before deploying, ensure you have:
    az login
    az account set --subscription <your-subscription-id>
    ```
+   
+   **⚠️ Token Expiry Issue?** For long deployments (10-20 minutes), user tokens may expire.  
+   Use **Service Principal authentication** instead - see [Authentication Options](#-authentication-options) below.
 
 2. **Docker** installed and running
    ```bash
@@ -71,7 +81,50 @@ This script will:
 
 **Deployment time:** ~8-10 minutes
 
-## 📋 Detailed Steps
+## � Authentication Options
+
+### Option 1: User Authentication (Default)
+
+Standard Azure CLI login - works for quick deployments:
+
+```bash
+az login
+./infra/deploy-container.sh
+```
+
+**⚠️ Limitation:** User tokens may expire during long deployments (10-20 minutes), causing failures during Docker build/push phases.
+
+### Option 2: Service Principal (Recommended for Production)
+
+Service principals provide uninterrupted authentication for long-running deployments and CI/CD pipelines.
+
+**Quick Setup:**
+
+```bash
+# 1. Create service principal (one-time setup)
+./infra/setup-service-principal.sh
+
+# If your organization has strict credential policies (e.g., 90-day max):
+# ./infra/setup-service-principal-strict.sh
+
+# 2. Load credentials
+source infra/.env.sp
+
+# 3. Deploy
+./infra/deploy-container.sh
+```
+
+**Benefits:**
+- ✅ No token expiration during deployment
+- ✅ Works reliably in CI/CD pipelines
+- ✅ Automated/unattended deployments
+- ✅ Can be scoped with specific permissions
+
+**Note:** If you get "credential lifetime exceeds max value" error, use `setup-service-principal-strict.sh` instead.
+
+**For detailed instructions, see:** [SERVICE_PRINCIPAL_AUTH.md](./SERVICE_PRINCIPAL_AUTH.md)
+
+## �📋 Detailed Steps
 
 ### Step 1: Configure Deployment (Optional)
 

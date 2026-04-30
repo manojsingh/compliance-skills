@@ -26,6 +26,11 @@ compliance-portal/data/*.db-wal
 compliance-portal/**/.env
 compliance-portal/**/.env.local
 
+# Azure service principal credentials (DO NOT COMMIT!)
+*.env.sp
+compliance-portal/infra/.env.sp
+compliance-portal/infra/sp-credentials.json
+
 # ── OS / editor noise ────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

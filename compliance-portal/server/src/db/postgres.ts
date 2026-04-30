@@ -37,9 +37,15 @@ class PostgresDatabase {
         // Azure PostgreSQL requires SSL
         requestCert: true,
       } : false,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000, // Increased from 2s to 10s for Azure
+      // Optimized connection pool settings
+      max: 10, // Reduced from 20 - better for single CPU containers
+      min: 2, // Keep 2 connections warm
+      idleTimeoutMillis: 30000, // Close idle connections after 30s
+      connectionTimeoutMillis: 10000, // 10s timeout for new connections
+      allowExitOnIdle: false, // Keep process alive even if pool is idle
+      // Performance optimizations
+      statement_timeout: 30000, // 30s query timeout
+      query_timeout: 30000, // 30s query timeout
     };
 
     if (this.useAzureAuth) {

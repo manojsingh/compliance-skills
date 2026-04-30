@@ -65,7 +65,7 @@ const server = app.listen(PORT, () => {
 
 // Graceful shutdown
 function shutdown(signal: string) {
-  console.log(`\n${signal} received — shutting down…`);
+  console.log(`\n${signal} received -- shutting down...`);
   scheduler.shutdown();
   server.close(() => {
     console.log('Server closed');

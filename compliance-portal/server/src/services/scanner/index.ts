@@ -290,7 +290,7 @@ export async function executeScan(config: ScanConfig): Promise<void> {
               console.log(`[Scanner] Page loaded in ${Date.now() - pageStartTime}ms: ${pageUrl}`);
             } catch (err) {
               // Skip this page if navigation fails entirely
-              console.warn(`[Scanner] Navigation failed after ${Date.now() - pageStartTime}ms for ${pageUrl} — skipping`);
+              console.warn(`[Scanner] Navigation failed after ${Date.now() - pageStartTime}ms for ${pageUrl} -- skipping`);
               return;
             }
 

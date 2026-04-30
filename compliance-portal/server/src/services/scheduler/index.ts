@@ -42,7 +42,7 @@ async function loadScanner(): Promise<void> {
       console.log('[Scheduler] Scanner service loaded');
     }
   } catch {
-    console.log('[Scheduler] Scanner service not available — scans will be created but not executed');
+    console.log('[Scheduler] Scanner service not available -- scans will be created but not executed');
   }
 }
 
@@ -116,11 +116,11 @@ class ScanScheduler {
         this.schedule(row.id, row.schedule_cron);
         count++;
       } else {
-        console.warn(`[Scheduler] Invalid cron "${row.schedule_cron}" for campaign ${row.id} (${row.name}) — skipped`);
+        console.warn(`[Scheduler] Invalid cron "${row.schedule_cron}" for campaign ${row.id} (${row.name}) -- skipped`);
       }
     }
 
-    console.log(`[Scheduler] Initialized — ${count} job(s) registered`);
+    console.log(`[Scheduler] Initialized -- ${count} job(s) registered`);
   }
 
   /** Register (or replace) a cron job for a campaign. */
@@ -140,7 +140,7 @@ class ScanScheduler {
     });
 
     this.jobs.set(campaignId, { campaignId, task, cronExpression });
-    console.log(`[Scheduler] Job registered for campaign ${campaignId} — ${describeCron(cronExpression)}`);
+    console.log(`[Scheduler] Job registered for campaign ${campaignId} -- ${describeCron(cronExpression)}`);
   }
 
   /** Stop and remove the cron job for a campaign. */
@@ -196,7 +196,7 @@ class ScanScheduler {
     }
     const count = this.jobs.size;
     this.jobs.clear();
-    console.log(`[Scheduler] Shutdown — ${count} job(s) stopped`);
+    console.log(`[Scheduler] Shutdown -- ${count} job(s) stopped`);
   }
 
   // -------------------------------------------------------------------------
@@ -217,13 +217,13 @@ class ScanScheduler {
       }
 
       if (!campaign) {
-        console.warn(`[Scheduler] Campaign ${campaignId} no longer exists — removing job`);
+        console.warn(`[Scheduler] Campaign ${campaignId} no longer exists -- removing job`);
         this.unschedule(campaignId);
         return;
       }
 
       if (campaign.status !== 'active') {
-        console.log(`[Scheduler] Campaign ${campaignId} is not active (${campaign.status}) — skipping`);
+        console.log(`[Scheduler] Campaign ${campaignId} is not active (${campaign.status}) -- skipping`);
         return;
       }
 
@@ -239,7 +239,7 @@ class ScanScheduler {
       }
 
       if (latest && (latest.status === 'pending' || latest.status === 'running')) {
-        console.log(`[Scheduler] Campaign ${campaignId} already has a ${latest.status} scan — skipping`);
+        console.log(`[Scheduler] Campaign ${campaignId} already has a ${latest.status} scan -- skipping`);
         return;
       }
 

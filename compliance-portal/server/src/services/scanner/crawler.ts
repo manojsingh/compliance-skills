@@ -114,7 +114,7 @@ export async function crawlSite(
       });
       loaded = true;
     } catch {
-      // Navigation failed — skip link extraction for this page
+      // Navigation failed -- skip link extraction for this page
     }
 
     if (!loaded) continue;

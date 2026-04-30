@@ -299,6 +299,24 @@ Service principals provide:
 - ✅ Reliable CI/CD pipeline support
 - ✅ Automated/unattended deployments
 
+**Required Permissions**:
+
+To create a service principal, your account needs:
+- **Azure AD Role**: Application Administrator, Cloud Application Administrator, or Global Administrator
+- **Subscription Role**: Owner (or User Access Administrator + Contributor)
+
+**Quick permission check**:
+```bash
+# Check your current roles
+az role assignment list --assignee $(az account show --query user.name -o tsv) \
+  --scope /subscriptions/$(az account show --query id -o tsv)
+```
+
+**If you lack permissions**: Ask your Azure AD administrator to either:
+- Grant you the required roles, OR
+- Create the service principal for you, OR
+- Use the standard deployment (user auth) with shorter deployment window
+
 **Setup Steps**:
 
 1. **Create Service Principal** (one-time setup):
@@ -318,6 +336,11 @@ Service principals provide:
    # Run deployment
    ./infra/deploy-container.sh
    ```
+
+**Common Issues**:
+- ⚠️ "Insufficient privileges": You need Application Administrator role in Azure AD
+- ⚠️ "Credential lifetime exceeds max": Use `./infra/setup-service-principal-strict.sh` instead
+- ⚠️ "Already exists": Delete existing SP or use a different name
 
 **Alternative**: Export credentials manually before deployment:
 ```bash
